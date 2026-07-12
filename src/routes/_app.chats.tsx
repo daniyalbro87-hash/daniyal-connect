@@ -100,7 +100,7 @@ function ChatsPage() {
   const sorted = useMemo(() => chats, [chats]);
 
   return (
-    <div className="min-h-screen mx-auto max-w-2xl px-4 pt-6 pb-24">
+    <div className="min-h-[100dvh] mx-auto w-full max-w-2xl px-4 pt-6 pb-28 overflow-x-hidden">
       {/* Header */}
       <header className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
