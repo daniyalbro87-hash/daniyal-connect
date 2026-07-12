@@ -9,6 +9,40 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function randomCode(len = 7) {
+  let out = "";
+  const arr = new Uint32Array(len);
+  crypto.getRandomValues(arr);
+  for (let i = 0; i < len; i++) out += CODE_ALPHABET[arr[i] % CODE_ALPHABET.length];
+  return out;
+}
+
+/** Create a unique invite code that points to the owner's uid. */
+export async function createInviteCode(uid: string): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = randomCode(7);
+    const ref = doc(db, "inviteCodes", code);
+    const snap = await getDoc(ref);
+    if (snap.exists()) continue;
+    await setDoc(ref, { uid, createdAt: serverTimestamp() });
+    return code;
+  }
+  throw new Error("Could not generate invite code, please try again.");
+}
+
+/** Resolve invite code -> owner uid. Throws user-friendly errors. */
+export async function resolveInviteCode(rawCode: string, selfUid: string): Promise<string> {
+  const code = rawCode.trim().toUpperCase();
+  if (!code) throw new Error("Please enter an invite code.");
+  const snap = await getDoc(doc(db, "inviteCodes", code));
+  if (!snap.exists()) throw new Error("Invalid invite code.");
+  const ownerUid = (snap.data() as { uid?: string }).uid;
+  if (!ownerUid) throw new Error("Invalid invite code.");
+  if (ownerUid === selfUid) throw new Error("That's your own code — share it with a friend.");
+  return ownerUid;
+}
+
 export function chatIdFor(a: string, b: string): string {
   return [a, b].sort().join("_");
 }
