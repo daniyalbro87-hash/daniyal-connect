@@ -105,6 +105,11 @@
 @layer base {
   * { border-color: var(--color-border); }
   html, body, #root { height: 100%; }
+  html, body {
+    overflow-x: hidden;
+    overscroll-behavior-y: none;
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     background: var(--gradient-app-bg);
     color: var(--color-foreground);
@@ -112,6 +117,8 @@
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
+  /* Prevent iOS zoom-on-focus (font-size >= 16px) */
+  input, textarea, select { font-size: 16px; }
 }
 
 @utility glass {
