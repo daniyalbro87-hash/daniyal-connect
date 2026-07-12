@@ -1,6 +1,8 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useAuthStore } from "../lib/auth-store";
+import { InstallPrompt } from "../components/InstallPrompt";
+import { NotificationsBridge } from "../components/NotificationsBridge";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
@@ -26,5 +28,11 @@ function AppLayout() {
       </div>
     );
   }
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      <NotificationsBridge />
+      <InstallPrompt />
+    </>
+  );
 }
