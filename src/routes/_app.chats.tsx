@@ -13,6 +13,7 @@ import { db } from "../lib/firebase";
 import { useAuthStore } from "../lib/auth-store";
 import { ensureChat, chatIdFor } from "../lib/chat";
 import { formatDistanceToNowStrict } from "date-fns";
+import { InviteModal } from "../components/InviteModal";
 
 export const Route = createFileRoute("/_app/chats")({
   head: () => ({ meta: [{ title: "Chats — Daniyal Chat" }] }),
@@ -42,6 +43,7 @@ function ChatsPage() {
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<UserLite[]>([]);
   const [searching, setSearching] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -98,7 +100,7 @@ function ChatsPage() {
   const sorted = useMemo(() => chats, [chats]);
 
   return (
-    <div className="min-h-screen mx-auto max-w-2xl px-4 pt-6 pb-24">
+    <div className="min-h-[100dvh] mx-auto w-full max-w-2xl px-4 pt-6 pb-28 overflow-x-hidden">
       {/* Header */}
       <header className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
@@ -197,9 +199,21 @@ function ChatsPage() {
           );
         })}
       </div>
+
+      {/* Floating New Chat button */}
+      <button
+        onClick={() => setInviteOpen(true)}
+        aria-label="New chat"
+        className="fixed bottom-6 right-[max(1rem,calc(50%-20rem+1rem))] z-40 w-14 h-14 rounded-full gradient-brand text-white shadow-glow grid place-items-center active:scale-95 transition"
+      >
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+
+      {inviteOpen && <InviteModal onClose={() => setInviteOpen(false)} />}
     </div>
   );
 }
+
 
 function Avatar({ user }: { user?: UserLite }) {
   const online = user?.presence?.online;
