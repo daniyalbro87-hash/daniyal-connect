@@ -13,6 +13,7 @@ import { db } from "../lib/firebase";
 import { useAuthStore } from "../lib/auth-store";
 import { ensureChat, chatIdFor } from "../lib/chat";
 import { formatDistanceToNowStrict } from "date-fns";
+import { InviteModal } from "../components/InviteModal";
 
 export const Route = createFileRoute("/_app/chats")({
   head: () => ({ meta: [{ title: "Chats — Daniyal Chat" }] }),
