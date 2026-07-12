@@ -105,7 +105,7 @@ function ChatPage() {
         </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4 space-y-1">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin px-3 py-4 space-y-1 overscroll-contain [scroll-behavior:smooth]">
         {messages.length === 0 && (
           <div className="text-center text-sm text-muted-foreground py-16">No messages yet. Say hi 👋</div>
         )}
