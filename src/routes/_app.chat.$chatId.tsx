@@ -39,7 +39,7 @@ function ChatPage() {
   useEffect(() => {
     if (!user) return;
     const parts = chatId.split("_");
-    const otherId = parts.find((p) => p !== user.uid);
+    const otherId = parts.find((p: string) => p !== user.uid);
     if (!otherId) return;
     getDoc(doc(db, "users", otherId)).then((s) => {
       if (s.exists()) setOther(s.data() as UserLite);
@@ -71,7 +71,7 @@ function ChatPage() {
   // typing indicator (other user)
   useEffect(() => {
     if (!user) return;
-    const otherId = chatId.split("_").find((p) => p !== user.uid);
+    const otherId = chatId.split("_").find((p: string) => p !== user.uid);
     if (!otherId) return;
     return onSnapshot(doc(db, "chats", chatId, "typing", otherId), (s) => {
       const data = s.data() as { typing?: boolean; at?: { toMillis?: () => number } } | undefined;
@@ -84,7 +84,7 @@ function ChatPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages.length, theyTyping]);
 
-  const otherId = chatId.split("_").find((p) => p !== user?.uid) || "";
+  const otherId = chatId.split("_").find((p: string) => p !== user?.uid) || "";
 
   const handleSend = async () => {
     const value = text.trim();
