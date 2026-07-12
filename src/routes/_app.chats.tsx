@@ -199,9 +199,21 @@ function ChatsPage() {
           );
         })}
       </div>
+
+      {/* Floating New Chat button */}
+      <button
+        onClick={() => setInviteOpen(true)}
+        aria-label="New chat"
+        className="fixed bottom-6 right-[max(1rem,calc(50%-20rem+1rem))] z-40 w-14 h-14 rounded-full gradient-brand text-white shadow-glow grid place-items-center active:scale-95 transition"
+      >
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+
+      {inviteOpen && <InviteModal onClose={() => setInviteOpen(false)} />}
     </div>
   );
 }
+
 
 function Avatar({ user }: { user?: UserLite }) {
   const online = user?.presence?.online;
