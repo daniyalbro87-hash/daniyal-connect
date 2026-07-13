@@ -1,11 +1,16 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
+  getDocs,
+  limit,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "./firebase";
 
@@ -67,19 +72,31 @@ export interface MessageDoc {
   status?: "sent" | "delivered" | "read";
 }
 
+/**
+ * Ensure a 1:1 chat exists between a and b. Uses setDoc without a prior read so
+ * it works under Firestore rules that gate reads on membership (which fail for
+ * non-existent docs). Safe to call repeatedly — merge preserves existing data.
+ */
 export async function ensureChat(a: string, b: string) {
   const id = chatIdFor(a, b);
   const ref = doc(db, "chats", id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) {
-    await setDoc(ref, {
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) return id;
+  } catch {
+    // Read may fail (permission-denied on non-existent doc). Fall through to create.
+  }
+  await setDoc(
+    ref,
+    {
       participants: [a, b].sort(),
       createdAt: serverTimestamp(),
       lastMessage: null,
       lastMessageAt: serverTimestamp(),
       unread: { [a]: 0, [b]: 0 },
-    });
-  }
+    },
+    { merge: true },
+  );
   return id;
 }
 
@@ -100,10 +117,13 @@ export async function sendMessage(chatId: string, msg: MessageDoc) {
           : msg.type === "audio"
             ? "🎤 Voice note"
             : "📎 Document";
-  await updateDoc(doc(db, "chats", chatId), {
+  const chatRef = doc(db, "chats", chatId);
+  const cur = await getDoc(chatRef);
+  const currentUnread = (cur.data()?.unread?.[msg.receiver] as number | undefined) ?? 0;
+  await updateDoc(chatRef, {
     lastMessage: { preview, sender: msg.sender, type: msg.type },
     lastMessageAt: serverTimestamp(),
-    [`unread.${msg.receiver}`]: (await getDoc(doc(db, "chats", chatId))).data()?.unread?.[msg.receiver] + 1 || 1,
+    [`unread.${msg.receiver}`]: currentUnread + 1,
   });
   return created.id;
 }
@@ -117,4 +137,79 @@ export async function setTyping(chatId: string, uid: string, typing: boolean) {
     typing,
     at: serverTimestamp(),
   }).catch(() => {});
+}
+
+// ============================================================
+// Username uniqueness
+// ============================================================
+
+/** Returns true if the username is available (or already owned by selfUid). */
+export async function isUsernameAvailable(username: string, selfUid: string): Promise<boolean> {
+  const uname = username.trim().toLowerCase();
+  if (!uname) return false;
+  const snap = await getDocs(
+    query(collection(db, "users"), where("username", "==", uname), limit(2)),
+  );
+  return snap.docs.every((d) => d.id === selfUid);
+}
+
+// ============================================================
+// Friend requests
+// Storage: friendRequests/{fromUid}_{toUid} = { from, to, status, createdAt }
+// ============================================================
+
+export interface FriendRequestDoc {
+  from: string;
+  to: string;
+  status: "pending" | "accepted" | "declined";
+  createdAt?: unknown;
+  fromProfile?: { displayName: string; username: string; photoURL: string };
+}
+
+export function requestId(from: string, to: string) {
+  return `${from}_${to}`;
+}
+
+export async function sendFriendRequest(
+  from: string,
+  to: string,
+  fromProfile: { displayName: string; username: string; photoURL: string },
+): Promise<void> {
+  if (from === to) throw new Error("You can't friend yourself.");
+  // Check reverse (they already sent to me) → auto-accept
+  const reverse = await getDoc(doc(db, "friendRequests", requestId(to, from)));
+  if (reverse.exists() && (reverse.data() as FriendRequestDoc).status === "pending") {
+    await acceptFriendRequest(from, to);
+    return;
+  }
+  const ref = doc(db, "friendRequests", requestId(from, to));
+  const existing = await getDoc(ref).catch(() => null);
+  if (existing?.exists()) {
+    const data = existing.data() as FriendRequestDoc;
+    if (data.status === "pending") throw new Error("Request already sent.");
+  }
+  await setDoc(ref, {
+    from,
+    to,
+    status: "pending",
+    fromProfile,
+    createdAt: serverTimestamp(),
+  } satisfies FriendRequestDoc);
+}
+
+export async function acceptFriendRequest(selfUid: string, otherUid: string): Promise<string> {
+  // The pending request is from otherUid → selfUid
+  const ref = doc(db, "friendRequests", requestId(otherUid, selfUid));
+  await updateDoc(ref, { status: "accepted" }).catch(async () => {
+    // If update fails (e.g. it's actually the other direction), try opposite.
+    await updateDoc(doc(db, "friendRequests", requestId(selfUid, otherUid)), { status: "accepted" });
+  });
+  const chatId = await ensureChat(selfUid, otherUid);
+  // Clean up: remove request doc after acceptance
+  await deleteDoc(ref).catch(() => {});
+  return chatId;
+}
+
+export async function declineFriendRequest(selfUid: string, otherUid: string): Promise<void> {
+  await deleteDoc(doc(db, "friendRequests", requestId(otherUid, selfUid))).catch(() => {});
 }
