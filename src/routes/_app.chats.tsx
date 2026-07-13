@@ -9,11 +9,11 @@ import {
   getDocs,
   limit,
   doc,
-  getDoc,
+  limit,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuthStore } from "../lib/auth-store";
-import { ensureChat, chatIdFor, sendFriendRequest, requestId } from "../lib/chat";
+import { ensureChat, chatIdFor, sendFriendRequest } from "../lib/chat";
 import { formatDistanceToNowStrict } from "date-fns";
 import { BottomNav } from "../components/BottomNav";
 
