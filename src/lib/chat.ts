@@ -202,7 +202,9 @@ export async function acceptFriendRequest(selfUid: string, otherUid: string): Pr
   const ref = doc(db, "friendRequests", requestId(otherUid, selfUid));
   await updateDoc(ref, { status: "accepted" }).catch(async () => {
     // If update fails (e.g. it's actually the other direction), try opposite.
-    await updateDoc(doc(db, "friendRequests", requestId(selfUid, otherUid)), { status: "accepted" });
+    await updateDoc(doc(db, "friendRequests", requestId(selfUid, otherUid)), {
+      status: "accepted",
+    });
   });
   const chatId = await ensureChat(selfUid, otherUid);
   // Clean up: remove request doc after acceptance

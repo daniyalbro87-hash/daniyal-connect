@@ -27,20 +27,28 @@ function ProfilePage() {
   if (!user || !profile) return null;
 
   const onPickAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]; if (!f) return;
+    const f = e.target.files?.[0];
+    if (!f) return;
     setUploading(true);
     try {
       const res = await uploadToCloudinary(f);
       setPhotoURL(res.secure_url);
     } catch (err) {
       setErr(err instanceof Error ? err.message : "Upload failed");
-    } finally { setUploading(false); }
+    } finally {
+      setUploading(false);
+    }
   };
 
   const save = async () => {
-    setSaving(true); setMsg(null); setErr(null);
+    setSaving(true);
+    setMsg(null);
+    setErr(null);
     try {
-      const uname = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+      const uname = username
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, "");
       if (!uname || uname.length < 3) throw new Error("Username must be at least 3 characters.");
       if (uname !== profile.username) {
         const ok = await isUsernameAvailable(uname, user.uid);
@@ -56,14 +64,28 @@ function ProfilePage() {
       setMsg("Saved ✓");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Save failed");
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <div className="min-h-[100dvh] mx-auto max-w-xl px-4 pt-6 pb-32 overflow-x-hidden">
       <header className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate({ to: "/chats" })} className="p-2 rounded-full glass hover:shadow-glow transition">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M15 18l-6-6 6-6"/></svg>
+        <button
+          onClick={() => navigate({ to: "/chats" })}
+          className="p-2 rounded-full glass hover:shadow-glow transition"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
         </button>
         <h1 className="text-2xl font-bold">Your profile</h1>
       </header>
@@ -72,7 +94,11 @@ function ProfilePage() {
         <div className="flex flex-col items-center">
           <div className="relative">
             {photoURL ? (
-              <img src={photoURL} alt="" className="w-28 h-28 rounded-full object-cover ring-4 ring-white shadow-glow" />
+              <img
+                src={photoURL}
+                alt=""
+                className="w-28 h-28 rounded-full object-cover ring-4 ring-white shadow-glow"
+              />
             ) : (
               <div className="w-28 h-28 rounded-full gradient-brand grid place-items-center text-white text-4xl font-bold shadow-glow">
                 {displayName[0]?.toUpperCase() || "U"}
@@ -83,26 +109,47 @@ function ProfilePage() {
               {uploading ? (
                 <span className="text-xs px-1">…</span>
               ) : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M12 5v14M5 12h14"/></svg>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                >
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
               )}
             </label>
           </div>
         </div>
 
         <Field label="Display name">
-          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="input" />
+          <input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            className="input"
+          />
         </Field>
         <Field label="Username" hint="unique, letters/numbers/underscores">
           <input value={username} onChange={(e) => setUsername(e.target.value)} className="input" />
         </Field>
         <Field label="Bio">
-          <textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={3} className="input resize-none" />
+          <textarea
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            rows={3}
+            className="input resize-none"
+          />
         </Field>
 
         <button
-          onClick={save} disabled={saving}
+          onClick={save}
+          disabled={saving}
           className="w-full rounded-2xl gradient-brand text-white font-semibold py-3 shadow-glow disabled:opacity-60"
-        >{saving ? "Saving…" : "Save changes"}</button>
+        >
+          {saving ? "Saving…" : "Save changes"}
+        </button>
         {msg && <div className="text-center text-sm text-emerald-600">{msg}</div>}
         {err && <div className="text-center text-sm text-destructive">{err}</div>}
       </div>
@@ -115,7 +162,15 @@ function ProfilePage() {
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="block">
       <div className="flex items-baseline justify-between mb-1">

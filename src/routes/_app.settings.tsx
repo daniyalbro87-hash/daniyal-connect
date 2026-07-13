@@ -28,14 +28,30 @@ function SettingsPage() {
   return (
     <div className="min-h-[100dvh] mx-auto w-full max-w-2xl px-4 pt-6 pb-32 overflow-x-hidden">
       <header className="flex items-center gap-3 mb-6">
-        <Link to="/chats" className="p-2 rounded-full glass hover:shadow-glow transition" aria-label="Back">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M15 18l-6-6 6-6"/></svg>
+        <Link
+          to="/chats"
+          className="p-2 rounded-full glass hover:shadow-glow transition"
+          aria-label="Back"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+          >
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
         </Link>
         <h1 className="text-2xl font-bold">Settings</h1>
       </header>
 
       {/* Profile card */}
-      <Link to="/profile" className="glass rounded-3xl p-4 shadow-soft flex items-center gap-4 mb-4 hover:shadow-glow transition">
+      <Link
+        to="/profile"
+        className="glass rounded-3xl p-4 shadow-soft flex items-center gap-4 mb-4 hover:shadow-glow transition"
+      >
         {profile.photoURL ? (
           <img src={profile.photoURL} alt="" className="w-16 h-16 rounded-2xl object-cover" />
         ) : (
@@ -48,7 +64,17 @@ function SettingsPage() {
           <div className="text-xs text-muted-foreground truncate">@{profile.username}</div>
           <div className="text-xs text-muted-foreground truncate mt-0.5">{profile.bio}</div>
         </div>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground shrink-0"><path d="m9 18 6-6-6-6"/></svg>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="text-muted-foreground shrink-0"
+        >
+          <path d="m9 18 6-6-6-6" />
+        </svg>
       </Link>
 
       {/* Appearance */}
@@ -62,7 +88,9 @@ function SettingsPage() {
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition ${
                   settings.theme === m ? "bg-surface shadow-soft" : "text-muted-foreground"
                 }`}
-              >{m}</button>
+              >
+                {m}
+              </button>
             ))}
           </div>
         </Row>
@@ -120,7 +148,8 @@ function SettingsPage() {
             </button>
           </div>
           <div className="text-[11px] text-muted-foreground">
-            Backups are prepared for restore in a future update. Your chats stay encrypted in Lovable Cloud (Firestore).
+            Backups are prepared for restore in a future update. Your chats stay encrypted in
+            Lovable Cloud (Firestore).
           </div>
         </div>
       </Section>
@@ -128,7 +157,10 @@ function SettingsPage() {
       {/* Account */}
       <Section title="Account">
         <button
-          onClick={async () => { await logout(); navigate({ to: "/auth", replace: true }); }}
+          onClick={async () => {
+            await logout();
+            navigate({ to: "/auth", replace: true });
+          }}
           className="w-full py-3 rounded-2xl bg-destructive/10 text-destructive font-semibold hover:bg-destructive/15 transition"
         >
           Log out
@@ -149,7 +181,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Row({ label, children, stack }: { label: string; children: React.ReactNode; stack?: boolean }) {
+function Row({
+  label,
+  children,
+  stack,
+}: {
+  label: string;
+  children: React.ReactNode;
+  stack?: boolean;
+}) {
   return (
     <div className={`p-3 ${stack ? "" : "flex items-center justify-between gap-3"}`}>
       <div className="text-sm font-medium">{label}</div>
@@ -158,7 +198,17 @@ function Row({ label, children, stack }: { label: string; children: React.ReactN
   );
 }
 
-function Toggle({ label, hint, value, onChange }: { label: string; hint?: string; value: boolean; onChange: (v: boolean) => void }) {
+function Toggle({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
   return (
     <button
       onClick={() => onChange(!value)}

@@ -60,8 +60,7 @@ function applyTheme(mode: ThemeMode) {
   if (typeof document === "undefined") return;
   const isDark =
     mode === "dark" ||
-    (mode === "system" &&
-      window.matchMedia("(prefers-color-scheme: dark)").matches);
+    (mode === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.classList.toggle("dark", isDark);
 }
 

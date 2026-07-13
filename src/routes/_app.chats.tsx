@@ -13,12 +13,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuthStore } from "../lib/auth-store";
-import {
-  ensureChat,
-  chatIdFor,
-  sendFriendRequest,
-  requestId,
-} from "../lib/chat";
+import { ensureChat, chatIdFor, sendFriendRequest, requestId } from "../lib/chat";
 import { formatDistanceToNowStrict } from "date-fns";
 import { BottomNav } from "../components/BottomNav";
 
@@ -50,7 +45,9 @@ function ChatsPage() {
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<UserLite[]>([]);
   const [searching, setSearching] = useState(false);
-  const [reqState, setReqState] = useState<Record<string, "idle" | "sending" | "sent" | "error">>({});
+  const [reqState, setReqState] = useState<Record<string, "idle" | "sending" | "sent" | "error">>(
+    {},
+  );
   const [pendingOut, setPendingOut] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -70,7 +67,9 @@ function ChatsPage() {
         const updates: Record<string, UserLite> = {};
         await Promise.all(
           otherIds.map(async (uid) => {
-            const s = await getDocs(query(collection(db, "users"), where("uid", "==", uid), limit(1)));
+            const s = await getDocs(
+              query(collection(db, "users"), where("uid", "==", uid), limit(1)),
+            );
             s.forEach((d) => (updates[uid] = d.data() as UserLite));
           }),
         );
@@ -85,7 +84,11 @@ function ChatsPage() {
   useEffect(() => {
     if (!user) return;
     const u = onSnapshot(
-      query(collection(db, "friendRequests"), where("from", "==", user.uid), where("status", "==", "pending")),
+      query(
+        collection(db, "friendRequests"),
+        where("from", "==", user.uid),
+        where("status", "==", "pending"),
+      ),
       (s) => setPendingOut(new Set(s.docs.map((d) => (d.data() as { to: string }).to))),
     );
     return () => u();
@@ -95,17 +98,30 @@ function ChatsPage() {
     let active = true;
     const run = async () => {
       const term = search.trim().toLowerCase();
-      if (!term) { setSearchResults([]); return; }
+      if (!term) {
+        setSearchResults([]);
+        return;
+      }
       setSearching(true);
       const snap = await getDocs(
-        query(collection(db, "users"), where("username", ">=", term), where("username", "<=", term + "\uf8ff"), limit(10)),
+        query(
+          collection(db, "users"),
+          where("username", ">=", term),
+          where("username", "<=", term + "\uf8ff"),
+          limit(10),
+        ),
       );
       if (!active) return;
-      setSearchResults(snap.docs.map((d) => d.data() as UserLite).filter((u) => u.uid !== user?.uid));
+      setSearchResults(
+        snap.docs.map((d) => d.data() as UserLite).filter((u) => u.uid !== user?.uid),
+      );
       setSearching(false);
     };
     const t = setTimeout(run, 200);
-    return () => { active = false; clearTimeout(t); };
+    return () => {
+      active = false;
+      clearTimeout(t);
+    };
   }, [search, user?.uid]);
 
   const startChat = async (other: UserLite) => {
@@ -143,11 +159,19 @@ function ChatsPage() {
         <div className="flex items-center gap-3 min-w-0">
           <img src="/icon-512.png" alt="" className="w-10 h-10 rounded-2xl shadow-soft shrink-0" />
           <div className="min-w-0">
-            <div className="text-lg font-bold leading-tight text-gradient-brand truncate">Daniyal Chat</div>
-            <div className="text-xs text-muted-foreground truncate">Hi, {profile?.displayName?.split(" ")[0]}</div>
+            <div className="text-lg font-bold leading-tight text-gradient-brand truncate">
+              Daniyal Chat
+            </div>
+            <div className="text-xs text-muted-foreground truncate">
+              Hi, {profile?.displayName?.split(" ")[0]}
+            </div>
           </div>
         </div>
-        <Link to="/profile" className="glass rounded-full p-1.5 hover:shadow-glow transition shrink-0" aria-label="Profile">
+        <Link
+          to="/profile"
+          className="glass rounded-full p-1.5 hover:shadow-glow transition shrink-0"
+          aria-label="Profile"
+        >
           {profile?.photoURL ? (
             <img src={profile.photoURL} alt="" className="w-9 h-9 rounded-full object-cover" />
           ) : (
@@ -160,7 +184,18 @@ function ChatsPage() {
 
       {/* Search */}
       <div className="glass rounded-2xl p-3 mb-4 shadow-soft flex items-center gap-2">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground shrink-0"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="text-muted-foreground shrink-0"
+        >
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -171,7 +206,9 @@ function ChatsPage() {
 
       {searchResults.length > 0 && (
         <div className="mb-4 space-y-1 animate-fade-up">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground px-2 mb-1">People</div>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground px-2 mb-1">
+            People
+          </div>
           {searchResults.map((u) => {
             const state = reqState[u.uid] || (pendingOut.has(u.uid) ? "sent" : "idle");
             return (
@@ -202,7 +239,9 @@ function ChatsPage() {
           })}
         </div>
       )}
-      {searching && <div className="text-xs text-muted-foreground text-center py-2">Searching…</div>}
+      {searching && (
+        <div className="text-xs text-muted-foreground text-center py-2">Searching…</div>
+      )}
 
       {/* Chats */}
       <div className="space-y-2">
@@ -210,7 +249,9 @@ function ChatsPage() {
           <div className="glass rounded-3xl p-10 text-center shadow-soft">
             <div className="text-4xl mb-2">💬</div>
             <div className="font-semibold">No conversations yet</div>
-            <div className="text-sm text-muted-foreground mt-1">Search a username or tap + to invite someone.</div>
+            <div className="text-sm text-muted-foreground mt-1">
+              Search a username or tap + to invite someone.
+            </div>
           </div>
         )}
         {sorted.map((c) => {
@@ -229,7 +270,11 @@ function ChatsPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between items-baseline gap-2">
                   <div className="font-semibold truncate">{other?.displayName || "Loading…"}</div>
-                  {t && <div className="text-[11px] text-muted-foreground shrink-0">{formatDistanceToNowStrict(new Date(t))}</div>}
+                  {t && (
+                    <div className="text-[11px] text-muted-foreground shrink-0">
+                      {formatDistanceToNowStrict(new Date(t))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex justify-between items-center gap-2">
                   <div className="text-sm text-muted-foreground truncate">
@@ -251,7 +296,6 @@ function ChatsPage() {
     </div>
   );
 }
-
 
 function Avatar({ user }: { user?: UserLite }) {
   const online = user?.presence?.online;

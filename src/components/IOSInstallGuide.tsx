@@ -37,12 +37,30 @@ export function IOSInstallGuide() {
           <div className="flex-1 min-w-0">
             <div className="text-sm font-semibold">Install Daniyal Chat</div>
             <div className="text-xs text-muted-foreground mt-0.5">
-              Tap <span className="inline-block px-1.5 py-0.5 rounded bg-muted font-mono">
-                <svg className="inline w-3 h-3 -mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-              </span> then <b>Add to Home Screen</b>.
+              Tap{" "}
+              <span className="inline-block px-1.5 py-0.5 rounded bg-muted font-mono">
+                <svg
+                  className="inline w-3 h-3 -mt-0.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+                  <polyline points="16 6 12 2 8 6" />
+                  <line x1="12" y1="2" x2="12" y2="15" />
+                </svg>
+              </span>{" "}
+              then <b>Add to Home Screen</b>.
             </div>
           </div>
-          <button onClick={dismiss} className="text-xs text-muted-foreground shrink-0 p-1" aria-label="Dismiss">✕</button>
+          <button
+            onClick={dismiss}
+            className="text-xs text-muted-foreground shrink-0 p-1"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
         </div>
       </div>
     </div>
