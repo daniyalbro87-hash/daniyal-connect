@@ -4,6 +4,8 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuthStore } from "../lib/auth-store";
 import { uploadToCloudinary } from "../lib/cloudinary";
+import { isUsernameAvailable } from "../lib/chat";
+import { BottomNav } from "../components/BottomNav";
 
 export const Route = createFileRoute("/_app/profile")({
   head: () => ({ meta: [{ title: "Profile — Daniyal Chat" }] }),
@@ -20,6 +22,7 @@ function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
   if (!user || !profile) return null;
 
@@ -30,29 +33,34 @@ function ProfilePage() {
       const res = await uploadToCloudinary(f);
       setPhotoURL(res.secure_url);
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Upload failed");
+      setErr(err instanceof Error ? err.message : "Upload failed");
     } finally { setUploading(false); }
   };
 
   const save = async () => {
-    setSaving(true); setMsg(null);
+    setSaving(true); setMsg(null); setErr(null);
     try {
       const uname = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+      if (!uname || uname.length < 3) throw new Error("Username must be at least 3 characters.");
+      if (uname !== profile.username) {
+        const ok = await isUsernameAvailable(uname, user.uid);
+        if (!ok) throw new Error("That username is already taken. Please pick another.");
+      }
       await updateDoc(doc(db, "users", user.uid), {
         displayName: displayName.trim() || "User",
-        username: uname || profile.username,
+        username: uname,
         bio: bio.trim(),
         photoURL,
       });
       await refreshProfile();
       setMsg("Saved ✓");
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Save failed");
+      setErr(e instanceof Error ? e.message : "Save failed");
     } finally { setSaving(false); }
   };
 
   return (
-    <div className="min-h-screen mx-auto max-w-xl px-4 pt-6 pb-16">
+    <div className="min-h-[100dvh] mx-auto max-w-xl px-4 pt-6 pb-32 overflow-x-hidden">
       <header className="flex items-center gap-3 mb-6">
         <button onClick={() => navigate({ to: "/chats" })} className="p-2 rounded-full glass hover:shadow-glow transition">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M15 18l-6-6 6-6"/></svg>
@@ -84,7 +92,7 @@ function ProfilePage() {
         <Field label="Display name">
           <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="input" />
         </Field>
-        <Field label="Username" hint="letters, numbers, underscores">
+        <Field label="Username" hint="unique, letters/numbers/underscores">
           <input value={username} onChange={(e) => setUsername(e.target.value)} className="input" />
         </Field>
         <Field label="Bio">
@@ -95,11 +103,14 @@ function ProfilePage() {
           onClick={save} disabled={saving}
           className="w-full rounded-2xl gradient-brand text-white font-semibold py-3 shadow-glow disabled:opacity-60"
         >{saving ? "Saving…" : "Save changes"}</button>
-        {msg && <div className="text-center text-sm text-muted-foreground">{msg}</div>}
+        {msg && <div className="text-center text-sm text-emerald-600">{msg}</div>}
+        {err && <div className="text-center text-sm text-destructive">{err}</div>}
       </div>
 
       <style>{`.input { width:100%; background:var(--color-surface); border:1px solid var(--color-border); border-radius:1rem; padding:.75rem 1rem; outline:none; }
         .input:focus { box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-primary) 25%, transparent); border-color: var(--color-primary); }`}</style>
+
+      <BottomNav />
     </div>
   );
 }
