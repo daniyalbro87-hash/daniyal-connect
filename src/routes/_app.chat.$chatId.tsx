@@ -48,6 +48,10 @@ function ChatPage() {
     });
   }, [otherId, user?.uid]);
 
+  const readReceipts = useSettingsStore((s) => s.settings.readReceipts);
+  const wallpaperKey = useSettingsStore((s) => s.settings.wallpaper);
+  const wallpaperCss = PRESET_WALLPAPERS[wallpaperKey]?.css;
+
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "asc"));
@@ -55,14 +59,17 @@ function ChatPage() {
       const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as MessageDoc & { createdAt?: { toMillis?: () => number } }) }));
       setMessages(items);
       items.forEach((m) => {
-        if (m.receiver === user.uid && m.status !== "read") {
-          updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: "read" }).catch(() => {});
+        if (m.receiver === user.uid) {
+          const target = readReceipts ? "read" : "delivered";
+          if (m.status !== target && !(m.status === "read" && target === "delivered")) {
+            updateDoc(doc(db, "chats", chatId, "messages", m.id), { status: target }).catch(() => {});
+          }
         }
       });
       markRead(chatId, user.uid);
     });
     return () => unsub();
-  }, [chatId, user?.uid]);
+  }, [chatId, user?.uid, readReceipts]);
 
   useEffect(() => {
     if (!user || !otherId) return;
