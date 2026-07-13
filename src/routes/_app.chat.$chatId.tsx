@@ -95,8 +95,9 @@ function ChatPage() {
   })();
 
   return (
-    <div className="h-[100dvh] flex flex-col mx-auto w-full max-w-2xl overflow-hidden">
+    <div className="h-[100dvh] flex flex-col mx-auto w-full max-w-2xl overflow-hidden" style={wallpaperCss ? { background: wallpaperCss } : undefined}>
       <header className="glass sticky top-0 z-10 flex items-center gap-3 px-4 py-3 border-b border-border/60">
+
         <button onClick={() => navigate({ to: "/chats" })} className="p-2 rounded-full hover:bg-muted transition" aria-label="Back">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M15 18l-6-6 6-6"/></svg>
         </button>
