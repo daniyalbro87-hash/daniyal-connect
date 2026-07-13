@@ -8,12 +8,19 @@ import {
   where,
   getDocs,
   limit,
+  doc,
+  getDoc,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuthStore } from "../lib/auth-store";
-import { ensureChat, chatIdFor } from "../lib/chat";
+import {
+  ensureChat,
+  chatIdFor,
+  sendFriendRequest,
+  requestId,
+} from "../lib/chat";
 import { formatDistanceToNowStrict } from "date-fns";
-import { InviteModal } from "../components/InviteModal";
+import { BottomNav } from "../components/BottomNav";
 
 export const Route = createFileRoute("/_app/chats")({
   head: () => ({ meta: [{ title: "Chats — Daniyal Chat" }] }),
@@ -36,14 +43,15 @@ interface UserLite {
 }
 
 function ChatsPage() {
-  const { user, profile, logout } = useAuthStore();
+  const { user, profile } = useAuthStore();
   const navigate = useNavigate();
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [others, setOthers] = useState<Record<string, UserLite>>({});
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<UserLite[]>([]);
   const [searching, setSearching] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
+  const [reqState, setReqState] = useState<Record<string, "idle" | "sending" | "sent" | "error">>({});
+  const [pendingOut, setPendingOut] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!user) return;
@@ -55,7 +63,6 @@ function ChatsPage() {
     const unsub = onSnapshot(q, async (snap) => {
       const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ChatItem, "id">) }));
       setChats(items);
-      // fetch other users
       const otherIds = Array.from(
         new Set(items.flatMap((c) => c.participants.filter((p) => p !== user.uid))),
       ).filter((id) => !others[id]);
@@ -72,6 +79,16 @@ function ChatsPage() {
     });
     return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid]);
+
+  // Track my outgoing pending friend requests to show "Requested" state
+  useEffect(() => {
+    if (!user) return;
+    const u = onSnapshot(
+      query(collection(db, "friendRequests"), where("from", "==", user.uid), where("status", "==", "pending")),
+      (s) => setPendingOut(new Set(s.docs.map((d) => (d.data() as { to: string }).to))),
+    );
+    return () => u();
   }, [user?.uid]);
 
   useEffect(() => {
@@ -93,66 +110,96 @@ function ChatsPage() {
 
   const startChat = async (other: UserLite) => {
     if (!user) return;
-    await ensureChat(user.uid, other.uid);
-    navigate({ to: "/chat/$chatId", params: { chatId: chatIdFor(user.uid, other.uid) } });
+    try {
+      await ensureChat(user.uid, other.uid);
+      navigate({ to: "/chat/$chatId", params: { chatId: chatIdFor(user.uid, other.uid) } });
+    } catch (e) {
+      console.error("Failed to open chat:", e);
+    }
+  };
+
+  const sendRequest = async (other: UserLite) => {
+    if (!user || !profile) return;
+    setReqState((s) => ({ ...s, [other.uid]: "sending" }));
+    try {
+      await sendFriendRequest(user.uid, other.uid, {
+        displayName: profile.displayName,
+        username: profile.username,
+        photoURL: profile.photoURL,
+      });
+      setReqState((s) => ({ ...s, [other.uid]: "sent" }));
+    } catch (e) {
+      console.error(e);
+      setReqState((s) => ({ ...s, [other.uid]: "error" }));
+    }
   };
 
   const sorted = useMemo(() => chats, [chats]);
 
   return (
-    <div className="min-h-[100dvh] mx-auto w-full max-w-2xl px-4 pt-6 pb-28 overflow-x-hidden">
+    <div className="min-h-[100dvh] mx-auto w-full max-w-2xl px-4 pt-6 pb-32 overflow-x-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <img src="/icon-512.png" alt="" className="w-10 h-10 rounded-2xl shadow-soft" />
-          <div>
-            <div className="text-lg font-bold leading-tight text-gradient-brand">Daniyal Chat</div>
-            <div className="text-xs text-muted-foreground">Hi, {profile?.displayName?.split(" ")[0]}</div>
+      <header className="flex items-center justify-between mb-6 gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <img src="/icon-512.png" alt="" className="w-10 h-10 rounded-2xl shadow-soft shrink-0" />
+          <div className="min-w-0">
+            <div className="text-lg font-bold leading-tight text-gradient-brand truncate">Daniyal Chat</div>
+            <div className="text-xs text-muted-foreground truncate">Hi, {profile?.displayName?.split(" ")[0]}</div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Link to="/profile" className="glass rounded-full p-2 hover:shadow-glow transition" aria-label="Profile">
-            {profile?.photoURL ? (
-              <img src={profile.photoURL} alt="" className="w-8 h-8 rounded-full object-cover" />
-            ) : (
-              <div className="w-8 h-8 rounded-full gradient-brand grid place-items-center text-white text-sm font-bold">
-                {profile?.displayName?.[0]?.toUpperCase() || "U"}
-              </div>
-            )}
-          </Link>
-          <button
-            onClick={async () => { await logout(); navigate({ to: "/auth", replace: true }); }}
-            className="glass rounded-full px-3 py-2 text-xs font-medium hover:shadow-glow transition"
-          >Logout</button>
-        </div>
+        <Link to="/profile" className="glass rounded-full p-1.5 hover:shadow-glow transition shrink-0" aria-label="Profile">
+          {profile?.photoURL ? (
+            <img src={profile.photoURL} alt="" className="w-9 h-9 rounded-full object-cover" />
+          ) : (
+            <div className="w-9 h-9 rounded-full gradient-brand grid place-items-center text-white text-sm font-bold">
+              {profile?.displayName?.[0]?.toUpperCase() || "U"}
+            </div>
+          )}
+        </Link>
       </header>
 
       {/* Search */}
-      <div className="glass rounded-2xl p-3 mb-4 shadow-soft">
+      <div className="glass rounded-2xl p-3 mb-4 shadow-soft flex items-center gap-2">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-muted-foreground shrink-0"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search users by username…"
-          className="w-full bg-transparent outline-none px-2 py-1 text-sm"
+          className="w-full bg-transparent outline-none px-1 py-1 text-sm"
         />
       </div>
 
       {searchResults.length > 0 && (
         <div className="mb-4 space-y-1 animate-fade-up">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground px-2 mb-1">Start a new chat</div>
-          {searchResults.map((u) => (
-            <button
-              key={u.uid}
-              onClick={() => startChat(u)}
-              className="w-full flex items-center gap-3 p-3 rounded-2xl bg-surface hover:shadow-soft transition text-left"
-            >
-              <Avatar user={u} />
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold truncate">{u.displayName}</div>
-                <div className="text-xs text-muted-foreground truncate">@{u.username}</div>
+          <div className="text-xs uppercase tracking-wide text-muted-foreground px-2 mb-1">People</div>
+          {searchResults.map((u) => {
+            const state = reqState[u.uid] || (pendingOut.has(u.uid) ? "sent" : "idle");
+            return (
+              <div
+                key={u.uid}
+                className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-3 rounded-2xl bg-surface hover:shadow-soft transition animate-fade-up"
+              >
+                <button onClick={() => startChat(u)} className="contents text-left">
+                  <Avatar user={u} />
+                  <div className="min-w-0">
+                    <div className="font-semibold truncate">{u.displayName}</div>
+                    <div className="text-xs text-muted-foreground truncate">@{u.username}</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => sendRequest(u)}
+                  disabled={state === "sending" || state === "sent"}
+                  className={`shrink-0 px-3 py-2 rounded-xl text-xs font-semibold transition ${
+                    state === "sent"
+                      ? "bg-muted text-muted-foreground"
+                      : "gradient-brand text-white shadow-glow"
+                  } disabled:opacity-70`}
+                >
+                  {state === "sent" ? "Requested" : state === "sending" ? "…" : "Add"}
+                </button>
               </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
       )}
       {searching && <div className="text-xs text-muted-foreground text-center py-2">Searching…</div>}
@@ -163,7 +210,7 @@ function ChatsPage() {
           <div className="glass rounded-3xl p-10 text-center shadow-soft">
             <div className="text-4xl mb-2">💬</div>
             <div className="font-semibold">No conversations yet</div>
-            <div className="text-sm text-muted-foreground mt-1">Search for a username above to start chatting.</div>
+            <div className="text-sm text-muted-foreground mt-1">Search a username or tap + to invite someone.</div>
           </div>
         )}
         {sorted.map((c) => {
@@ -200,16 +247,7 @@ function ChatsPage() {
         })}
       </div>
 
-      {/* Floating New Chat button */}
-      <button
-        onClick={() => setInviteOpen(true)}
-        aria-label="New chat"
-        className="fixed bottom-6 right-[max(1rem,calc(50%-20rem+1rem))] z-40 w-14 h-14 rounded-full gradient-brand text-white shadow-glow grid place-items-center active:scale-95 transition"
-      >
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M12 5v14M5 12h14"/></svg>
-      </button>
-
-      {inviteOpen && <InviteModal onClose={() => setInviteOpen(false)} />}
+      <BottomNav />
     </div>
   );
 }
@@ -218,7 +256,7 @@ function ChatsPage() {
 function Avatar({ user }: { user?: UserLite }) {
   const online = user?.presence?.online;
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       {user?.photoURL ? (
         <img src={user.photoURL} alt="" className="w-12 h-12 rounded-2xl object-cover" />
       ) : (
