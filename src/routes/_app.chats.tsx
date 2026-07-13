@@ -9,7 +9,6 @@ import {
   getDocs,
   limit,
   doc,
-  limit,
 } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuthStore } from "../lib/auth-store";
