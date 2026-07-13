@@ -11,6 +11,7 @@ import {
 import { db } from "../lib/firebase";
 import { useAuthStore } from "../lib/auth-store";
 import { markRead, type MessageDoc } from "../lib/chat";
+import { useSettingsStore, PRESET_WALLPAPERS } from "../lib/settings-store";
 import { format } from "date-fns";
 import { MessageMedia } from "../components/MessageMedia";
 import { ImageViewer } from "../components/ImageViewer";
