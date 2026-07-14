@@ -76,6 +76,9 @@ function ChatsPage() {
         );
         if (Object.keys(updates).length) setOthers((prev) => ({ ...prev, ...updates }));
       }
+    }, (err) => {
+      console.error("chats snapshot error", err);
+      setChatsLoaded(true);
     });
     return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
