@@ -249,7 +249,20 @@ function ChatsPage() {
 
       {/* Chats */}
       <div className="space-y-2">
-        {sorted.length === 0 && !search && (
+        {!chatsLoaded && (
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3 p-3 rounded-2xl bg-surface animate-pulse">
+                <div className="w-12 h-12 rounded-2xl bg-muted" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-1/3 bg-muted rounded" />
+                  <div className="h-3 w-2/3 bg-muted rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {chatsLoaded && sorted.length === 0 && !search && (
           <div className="glass rounded-3xl p-10 text-center shadow-soft">
             <div className="text-4xl mb-2">💬</div>
             <div className="font-semibold">No conversations yet</div>
