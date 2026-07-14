@@ -1,9 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthStore } from "../lib/auth-store";
 import { useSettingsStore, PRESET_WALLPAPERS, type ThemeMode } from "../lib/settings-store";
 import { BottomNav } from "../components/BottomNav";
 import { format } from "date-fns";
+import { enablePushNotifications, permissionState, sendTestNotification, type PermState } from "../lib/messaging";
 
 export const Route = createFileRoute("/_app/settings")({
   head: () => ({ meta: [{ title: "Settings — Daniyal Chat" }] }),
@@ -122,10 +123,23 @@ function SettingsPage() {
           onChange={(v) => update({ readReceipts: v })}
         />
         <Toggle
-          label="Notifications"
+          label="In-app alerts"
           hint="Show in-app alerts for new messages"
           value={settings.notifications}
           onChange={(v) => update({ notifications: v })}
+        />
+      </Section>
+
+      {/* Notifications */}
+      <NotificationsSection uid={user.uid} />
+
+      {/* Calls */}
+      <Section title="Calls">
+        <Toggle
+          label="Local call recording"
+          hint="Record calls to your device only. Never uploaded."
+          value={settings.callRecording}
+          onChange={(v) => update({ callRecording: v })}
         />
       </Section>
 
@@ -230,5 +244,77 @@ function Toggle({
         />
       </span>
     </button>
+  );
+}
+
+function NotificationsSection({ uid }: { uid: string }) {
+  const [perm, setPerm] = useState<PermState>(permissionState());
+  const [busy, setBusy] = useState(false);
+  const [tokenSaved, setTokenSaved] = useState(false);
+
+  useEffect(() => {
+    const i = setInterval(() => setPerm(permissionState()), 1500);
+    return () => clearInterval(i);
+  }, []);
+
+  const enable = async () => {
+    setBusy(true);
+    const res = await enablePushNotifications(uid);
+    setPerm(res.permission);
+    setTokenSaved(!!res.token);
+    setBusy(false);
+  };
+
+  const statusText =
+    perm === "granted"
+      ? tokenSaved
+        ? "Enabled — push token registered"
+        : "Enabled"
+      : perm === "denied"
+        ? "Blocked in browser settings"
+        : perm === "unsupported"
+          ? "Not supported on this device"
+          : "Not enabled yet";
+
+  return (
+    <section className="mb-5">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground px-2 mb-2">Notifications</div>
+      <div className="glass rounded-3xl p-4 shadow-soft space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold">Notification status</div>
+            <div className="text-xs text-muted-foreground truncate">{statusText}</div>
+          </div>
+          <span
+            className={`shrink-0 w-2.5 h-2.5 rounded-full ${
+              perm === "granted" ? "bg-emerald-500" : perm === "denied" ? "bg-red-500" : "bg-amber-500"
+            }`}
+          />
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={enable}
+            disabled={busy || perm === "granted" || perm === "unsupported"}
+            className="flex-1 py-2.5 rounded-xl gradient-brand text-white text-sm font-semibold shadow-glow disabled:opacity-60"
+          >
+            {busy ? "Enabling…" : perm === "granted" ? "Enabled" : "Enable notifications"}
+          </button>
+          <button
+            onClick={sendTestNotification}
+            disabled={perm !== "granted"}
+            className="flex-1 py-2.5 rounded-xl bg-muted text-sm font-semibold disabled:opacity-60"
+          >
+            Test notification
+          </button>
+        </div>
+        {perm === "denied" && (
+          <div className="text-[11px] text-muted-foreground leading-relaxed">
+            Notifications are blocked. To re-enable: tap the lock/info icon in your browser's
+            address bar → Site settings → Notifications → Allow. On iPhone, install this app to
+            your Home Screen first, then open Settings → Notifications → Daniyal Chat.
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

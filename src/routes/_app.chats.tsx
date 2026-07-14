@@ -40,6 +40,7 @@ function ChatsPage() {
   const { user, profile } = useAuthStore();
   const navigate = useNavigate();
   const [chats, setChats] = useState<ChatItem[]>([]);
+  const [chatsLoaded, setChatsLoaded] = useState(false);
   const [others, setOthers] = useState<Record<string, UserLite>>({});
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<UserLite[]>([]);
@@ -59,6 +60,7 @@ function ChatsPage() {
     const unsub = onSnapshot(q, async (snap) => {
       const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ChatItem, "id">) }));
       setChats(items);
+      setChatsLoaded(true);
       const otherIds = Array.from(
         new Set(items.flatMap((c) => c.participants.filter((p) => p !== user.uid))),
       ).filter((id) => !others[id]);
@@ -74,6 +76,9 @@ function ChatsPage() {
         );
         if (Object.keys(updates).length) setOthers((prev) => ({ ...prev, ...updates }));
       }
+    }, (err) => {
+      console.error("chats snapshot error", err);
+      setChatsLoaded(true);
     });
     return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -244,7 +249,20 @@ function ChatsPage() {
 
       {/* Chats */}
       <div className="space-y-2">
-        {sorted.length === 0 && !search && (
+        {!chatsLoaded && (
+          <div className="space-y-2">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3 p-3 rounded-2xl bg-surface animate-pulse">
+                <div className="w-12 h-12 rounded-2xl bg-muted" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-3 w-1/3 bg-muted rounded" />
+                  <div className="h-3 w-2/3 bg-muted rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {chatsLoaded && sorted.length === 0 && !search && (
           <div className="glass rounded-3xl p-10 text-center shadow-soft">
             <div className="text-4xl mb-2">💬</div>
             <div className="font-semibold">No conversations yet</div>

@@ -9,6 +9,9 @@ import { format } from "date-fns";
 import { MessageMedia } from "../components/MessageMedia";
 import { ImageViewer } from "../components/ImageViewer";
 import { Composer } from "../components/Composer";
+import { Phone } from "lucide-react";
+import { startOutgoingCall } from "../lib/webrtc";
+import { useCallStore } from "../lib/call-store";
 
 export const Route = createFileRoute("/_app/chat/$chatId")({
   head: () => ({ meta: [{ title: "Chat — Daniyal Chat" }] }),
@@ -124,12 +127,47 @@ function ChatPage() {
             {other?.displayName?.[0]?.toUpperCase() || "?"}
           </div>
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="font-semibold truncate">{other?.displayName || "…"}</div>
           <div className={`text-xs ${theyTyping ? "text-primary" : "text-muted-foreground"}`}>
             {presenceLine}
           </div>
         </div>
+        <button
+          onClick={async () => {
+            if (!other || !profile) return;
+            try {
+              const session = await startOutgoingCall({
+                caller: user.uid,
+                callee: other.uid,
+                callerProfile: {
+                  displayName: profile.displayName,
+                  photoURL: profile.photoURL,
+                  username: profile.username,
+                },
+              });
+              useCallStore.getState().set({
+                ui: "outgoing",
+                session,
+                peer: {
+                  uid: other.uid,
+                  displayName: other.displayName,
+                  photoURL: other.photoURL,
+                  username: other.username,
+                },
+                status: "ringing",
+                startedAt: null,
+              });
+            } catch (e) {
+              console.error("Call failed", e);
+              alert(e instanceof Error ? e.message : "Could not start call");
+            }
+          }}
+          className="p-2 rounded-full hover:bg-muted transition shrink-0"
+          aria-label="Voice call"
+        >
+          <Phone size={20} />
+        </button>
       </header>
 
       <div

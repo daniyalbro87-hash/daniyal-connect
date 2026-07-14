@@ -176,23 +176,36 @@ export async function sendFriendRequest(
   fromProfile: { displayName: string; username: string; photoURL: string },
 ): Promise<void> {
   if (from === to) throw new Error("You can't friend yourself.");
-  // Check reverse (they already sent to me) → auto-accept
-  const reverse = await getDoc(doc(db, "friendRequests", requestId(to, from)));
-  if (reverse.exists() && (reverse.data() as FriendRequestDoc).status === "pending") {
-    await acceptFriendRequest(from, to);
-    return;
-  }
+  // Sanitize — Firestore rejects undefined
+  const safeProfile = {
+    displayName: fromProfile.displayName || "",
+    username: fromProfile.username || "",
+    photoURL: fromProfile.photoURL || "",
+  };
+  // Reverse check → auto-accept if they already sent us one (tolerate permission-denied)
+  try {
+    const reverse = await getDoc(doc(db, "friendRequests", requestId(to, from)));
+    if (reverse.exists() && (reverse.data() as FriendRequestDoc).status === "pending") {
+      await acceptFriendRequest(from, to);
+      return;
+    }
+  } catch { /* not readable → ignore */ }
   const ref = doc(db, "friendRequests", requestId(from, to));
-  const existing = await getDoc(ref).catch(() => null);
-  if (existing?.exists()) {
-    const data = existing.data() as FriendRequestDoc;
-    if (data.status === "pending") throw new Error("Request already sent.");
+  try {
+    const existing = await getDoc(ref);
+    if (existing.exists()) {
+      const data = existing.data() as FriendRequestDoc;
+      if (data.status === "pending") throw new Error("Request already sent.");
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message === "Request already sent.") throw e;
+    // permission-denied on non-existent doc → fall through to create
   }
   await setDoc(ref, {
     from,
     to,
     status: "pending",
-    fromProfile,
+    fromProfile: safeProfile,
     createdAt: serverTimestamp(),
   } satisfies FriendRequestDoc);
 }
