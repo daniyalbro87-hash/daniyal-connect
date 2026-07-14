@@ -40,6 +40,7 @@ function ChatsPage() {
   const { user, profile } = useAuthStore();
   const navigate = useNavigate();
   const [chats, setChats] = useState<ChatItem[]>([]);
+  const [chatsLoaded, setChatsLoaded] = useState(false);
   const [others, setOthers] = useState<Record<string, UserLite>>({});
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<UserLite[]>([]);
