@@ -9,6 +9,9 @@ import { format } from "date-fns";
 import { MessageMedia } from "../components/MessageMedia";
 import { ImageViewer } from "../components/ImageViewer";
 import { Composer } from "../components/Composer";
+import { Phone } from "lucide-react";
+import { startOutgoingCall } from "../lib/webrtc";
+import { useCallStore } from "../lib/call-store";
 
 export const Route = createFileRoute("/_app/chat/$chatId")({
   head: () => ({ meta: [{ title: "Chat — Daniyal Chat" }] }),
