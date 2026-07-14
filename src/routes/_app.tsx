@@ -28,6 +28,15 @@ function AppLayout() {
     return () => unbind();
   }, [user?.uid, bind, unbind]);
 
+  // Auto-request notifications + register FCM once per session
+  useEffect(() => {
+    if (!user) return;
+    const t = setTimeout(() => {
+      enablePushNotifications(user.uid).catch(() => {});
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [user?.uid]);
+
   if (loading || !user) {
     return (
       <div className="min-h-[100dvh] flex items-center justify-center">
@@ -47,6 +56,8 @@ function AppLayout() {
       <NotificationsBridge />
       <InstallPrompt />
       <IOSInstallGuide />
+      <CallListener />
+      <CallOverlay />
     </>
   );
 }
