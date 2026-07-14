@@ -123,10 +123,23 @@ function SettingsPage() {
           onChange={(v) => update({ readReceipts: v })}
         />
         <Toggle
-          label="Notifications"
+          label="In-app alerts"
           hint="Show in-app alerts for new messages"
           value={settings.notifications}
           onChange={(v) => update({ notifications: v })}
+        />
+      </Section>
+
+      {/* Notifications */}
+      <NotificationsSection uid={user.uid} />
+
+      {/* Calls */}
+      <Section title="Calls">
+        <Toggle
+          label="Local call recording"
+          hint="Record calls to your device only. Never uploaded."
+          value={settings.callRecording}
+          onChange={(v) => update({ callRecording: v })}
         />
       </Section>
 
