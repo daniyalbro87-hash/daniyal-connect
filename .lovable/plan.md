@@ -1,76 +1,59 @@
-# Daniyal Chat — Implementation Plan
+# Implementation Plan
 
-A premium WhatsApp/Telegram-style chat PWA built on **Firebase (Auth + Firestore only)** and **Cloudinary** (all media). No Firebase Storage anywhere. No Lovable Cloud/Supabase.
+This is a large batch — I'll ship it in one pass but want you to confirm scope and the Firebase-side config you'll need to do afterward.
 
-This is a large build. I'll deliver it in **3 sequenced phases** in this same project — each phase leaves the app fully working, and I move to the next automatically unless you say stop.
+## What I'll build
 
----
+### 1. WebRTC 1:1 Voice Calling
+- New `src/lib/webrtc.ts` — `RTCPeerConnection` wrapper with Google STUN, structured so you can drop in TURN later via a single env constant.
+- Firestore signaling under `calls/{callId}` with subcollections `offerCandidates` / `answerCandidates`. Call doc holds `caller`, `callee`, `status` (`ringing|accepted|declined|ended`), `offer`, `answer`, timestamps.
+- New `src/components/CallOverlay.tsx` — fullscreen overlay for both outgoing ("Calling…") and incoming ("Accept / Decline") with caller avatar + name, timer once connected, mute, speaker (via `setSinkId` where supported), end call.
+- New `src/lib/call-store.ts` (zustand) — global call state so the overlay renders app-wide, plus a top-level `CallListener` mounted in `_app.tsx` watching `calls` where `callee == me && status == 'ringing'`.
+- Chat header gets a phone icon that starts a call (no design change beyond the icon).
+- Reconnect: on `iceconnectionstatechange === 'disconnected'` attempt ICE restart once before ending.
 
-## Phase 1 — Foundation & Core Chat (first delivery)
+### 2. FCM Push Notifications
+- Add `firebase/messaging`. New `public/firebase-messaging-sw.js` (background handler) — separate from any app-shell SW, per PWA rules.
+- New `src/lib/messaging.ts` — request permission, get token with the VAPID key you provided, save to `users/{uid}/fcmTokens/{token}`.
+- Notifications for: new messages, friend requests, incoming calls. Sending requires an FCM server-side sender — I'll wire the client + token storage and document what you need to add server-side (Cloud Function or your existing backend). Without a sender, foreground alerts still work via the existing `NotificationsBridge`; I'll extend it to cover friend requests + calls too so the app works today.
+- Notification click routes to `/chat/:id`, `/friends`, or opens the incoming call.
 
-**Infra**
-- Add `firebase` SDK, wire `src/lib/firebase.ts` with the provided config (Auth + Firestore only; no `storageBucket`).
-- Add `.env` for `VITE_CLOUDINARY_CLOUD_NAME` and `VITE_CLOUDINARY_UPLOAD_PRESET` (unsigned preset — safe in client, no API secret).
-- Design system overhaul in `src/styles.css`: soft light theme, blue→purple gradient tokens, glass surfaces, chat-bubble tokens, premium typography (Plus Jakarta Sans + Inter).
-- Generate DC gradient logo (used for favicon, PWA icons, splash, navbar).
-- PWA: `manifest.webmanifest`, icons (192/512/maskable), theme color, install prompt component, standalone display. (Service worker guarded per Lovable PWA rules — offline app shell only, not registered in preview.)
+### 3. Settings → Notifications section
+- Extend `_app.settings.tsx`: Enable Notifications button (triggers permission + token registration), live permission status, Test Notification button, and a clear "how to enable" hint when `Notification.permission === 'denied'`.
+- Add Call Recording toggle to settings store.
 
-**Auth & Profile**
-- Google Sign-In, persistent session, protected `_authenticated` layout, logout.
-- Firestore `users/{uid}`: displayName, username (unique), bio, photoURL (Cloudinary), createdAt.
-- Profile page: edit displayName / username / bio / avatar (avatar upload → Cloudinary).
+### 4. PWA polish
+- Register `firebase-messaging-sw.js` at `/firebase-messaging-sw.js` scope. Keep separate from any app-shell SW.
+- iOS: existing `IOSInstallGuide` stays; add `apple-mobile-web-app-capable` meta already present — verify.
+- Confirm manifest has correct icons/theme; already present.
 
-**Home / Conversations**
-- Conversation list with last message preview, unread badge, online dot, relative time.
-- User search (by username/displayName) to start a new chat.
+### 5. Local Call Recording
+- When toggle is ON, capture `MediaStreamDestination` mixing local mic + remote audio via `MediaRecorder` (webm/opus).
+- On call end, prompt a download via a Blob URL. Never uploaded anywhere.
 
-**1:1 Realtime Chat**
-- Firestore schema: `chats/{chatId}` + `chats/{chatId}/messages/{msgId}`.
-- Text messages, realtime `onSnapshot`, timestamps.
-- Sent / Delivered / Read receipts (double-tick style).
-- Typing indicator (`chats/{chatId}/typing/{uid}`).
-- Presence (online / lastSeen) via `users/{uid}.presence` heartbeat + `onDisconnect`-style timeout.
+### 6. Dashboard loading fix
+- Root cause candidates in `_app.chats.tsx`: listener depends on `user.uid` but effect may fire before auth store hydrates, or query fails silently on empty `participants`. Fix by:
+  - Gating the subscribe effect on `!loading && user`.
+  - Showing an explicit skeleton until first snapshot arrives (not just empty state).
+  - Retrying once on `permission-denied` after auth token refresh.
 
----
+### 7. Friend request fix
+- Audit `sendFriendRequest` — current code does a `getDoc` on a request that may not exist under strict rules (permission-denied bubbles up). Switch pre-check to a query on `from+to` OR wrap the read in try/catch and fall through to create.
+- Ensure `fromProfile` fields are never `undefined` (Firestore rejects).
+- Show toast on success/failure.
+- Requests page (`_app.friends.tsx`) — verify realtime listener is bound correctly; add loading state.
 
-## Phase 2 — Media & Rich Messaging
+### 9. Security preserved
+- No rule relaxation. I'll list the exact rule additions you need for `calls/{callId}` + `users/{uid}/fcmTokens/{token}` so you can paste them into your Firestore rules.
 
-- Cloudinary unsigned upload helper (`src/lib/cloudinary.ts`) with progress.
-- **Images**: single + multi-image picker, in-bubble responsive grid, fullscreen viewer with pinch-zoom & download.
-- **Videos**: in-bubble preview + inline player + fullscreen.
-- **Voice notes**: record (MediaRecorder), waveform preview, cancel/send, in-bubble player with seek.
-- **Documents** (PDF/DOCX/TXT/ZIP/APK/…): file icon by type, size, open/download.
-- Permissions handled correctly (camera, mic, files).
-- Firestore messages only store `{type, secure_url, public_id, mime, size, sender, receiver, timestamp, status}`.
+## What you need to do after I ship
 
----
+1. **Firestore rules** — I'll print the additions for `calls`, `users/{uid}/fcmTokens`, and any tightened `friendRequests` rules.
+2. **FCM server sender** — client tokens will be saved; to actually deliver push while the app is closed you need a small server (Cloud Function or your backend) that reads tokens and calls FCM HTTP v1. I'll include a ready-to-deploy `functions/sendPush.ts` template.
+3. **Firebase console** — enable Cloud Messaging API (already enabled if you generated the VAPID key), keep Google Auth settings unchanged.
 
-## Phase 3 — Polish, Notifications, Performance
+## Not included (out of scope, please confirm if you want them)
+- CallKit-style native ringing on iOS PWA — browsers don't allow it; I'll use best-effort in-app ringtone + notification.
+- TURN server provisioning — code is TURN-ready but you'll need to supply credentials (e.g., Twilio, Metered) when you're ready.
 
-- Unread counters + in-app toast notifications.
-- Browser `Notification` API (foreground); PWA notification permission flow.
-- Message list virtualization (`@tanstack/react-virtual`) for smooth long-history scrolling.
-- Route-level lazy loading, image `loading="lazy"`, Cloudinary `f_auto,q_auto` transformations.
-- Empty states, skeletons, error boundaries, hydration-safe reads.
-- Final QA pass against the checklist in your prompt.
-
----
-
-## Technical notes (for reference)
-
-- **Routing**: TanStack Start file routes — `/auth`, `/` (chat list, protected), `/chat/$chatId`, `/profile`, `/settings`.
-- **State**: Firebase listeners + small Zustand store for auth/presence; TanStack Query only where useful.
-- **Deterministic chatId**: `sortedUids.join('_')` so both users resolve the same doc.
-- **Security**: Cloudinary unsigned preset (no secret in client). I'll also output the recommended Firestore security rules for you to paste into the Firebase console — I can't deploy them from here.
-- **Deployment**: Works on Vercel out of the box (TanStack Start build). I'll note the env vars to set there.
-
----
-
-## What I need from you before I start
-
-Just confirm two things and I'll begin Phase 1 immediately:
-
-1. **Cloudinary upload preset** — is `Daniyal chat` configured as **Unsigned**? (Required for direct browser uploads without exposing your API secret. If not, set it to Unsigned in Cloudinary → Settings → Upload.)
-2. **Firestore security rules** — OK if I hand you the rules to paste into the Firebase console yourself? (I have no access to your Firebase project.)
-
-Reply "go" (with any adjustments) and I'll ship Phase 1.
+Confirm and I'll implement everything above in one pass.
