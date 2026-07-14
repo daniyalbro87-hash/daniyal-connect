@@ -60,6 +60,7 @@ function ChatsPage() {
     const unsub = onSnapshot(q, async (snap) => {
       const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ChatItem, "id">) }));
       setChats(items);
+      setChatsLoaded(true);
       const otherIds = Array.from(
         new Set(items.flatMap((c) => c.participants.filter((p) => p !== user.uid))),
       ).filter((id) => !others[id]);
