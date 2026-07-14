@@ -5,6 +5,9 @@ import { useSettingsStore } from "../lib/settings-store";
 import { InstallPrompt } from "../components/InstallPrompt";
 import { NotificationsBridge } from "../components/NotificationsBridge";
 import { IOSInstallGuide } from "../components/IOSInstallGuide";
+import { CallListener } from "../components/CallListener";
+import { CallOverlay } from "../components/CallOverlay";
+import { enablePushNotifications } from "../lib/messaging";
 
 export const Route = createFileRoute("/_app")({
   component: AppLayout,
