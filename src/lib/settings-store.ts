@@ -8,6 +8,7 @@ export interface UserSettings {
   theme: ThemeMode;
   readReceipts: boolean;
   notifications: boolean;
+  callRecording: boolean;
   wallpaper: string; // key from PRESET_WALLPAPERS or a raw color/gradient
   lastBackupAt?: number | null;
 }
@@ -16,6 +17,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   theme: "system",
   readReceipts: true,
   notifications: true,
+  callRecording: false,
   wallpaper: "aurora",
   lastBackupAt: null,
 };
