@@ -56,7 +56,7 @@ export function CallOverlay() {
     const a = audioRef.current;
     a.srcObject = session.remoteStream;
     a.autoplay = true;
-    a.playsInline = true;
+    a.setAttribute("playsinline", "");
     const tryPlay = () => a.play().catch(() => {});
     tryPlay();
 
