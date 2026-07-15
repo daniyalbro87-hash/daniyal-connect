@@ -12,12 +12,23 @@ import {
 import { db } from "./firebase";
 import { chatIdFor } from "./chat";
 
-// Add TURN servers here later. Keep the array stable so callers don't need changes.
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"] },
-  // Example TURN (fill later):
-  // { urls: "turn:turn.example.com:3478", username: "...", credential: "..." },
-];
+// Read TURN config from Vite env (VITE_TURN_URL / VITE_TURN_USERNAME / VITE_TURN_CREDENTIAL).
+// STUN servers are always included as a fallback so calls work on the same network
+// even when TURN isn't configured yet.
+function buildIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun.cloudflare.com:3478"] },
+  ];
+  const url = import.meta.env.VITE_TURN_URL as string | undefined;
+  const username = import.meta.env.VITE_TURN_USERNAME as string | undefined;
+  const credential = import.meta.env.VITE_TURN_CREDENTIAL as string | undefined;
+  if (url && username && credential) {
+    // Support comma-separated URLs
+    const urls = url.split(",").map((u) => u.trim()).filter(Boolean);
+    servers.push({ urls, username, credential });
+  }
+  return servers;
+}
 
 export type CallStatus = "ringing" | "accepted" | "declined" | "ended";
 export interface CallDoc {
@@ -31,7 +42,6 @@ export interface CallDoc {
 }
 
 export function callIdFor(a: string, b: string) {
-  // A single call doc per pair per session; suffix with timestamp for uniqueness
   return `${chatIdFor(a, b)}__${Date.now()}`;
 }
 
@@ -40,17 +50,48 @@ export interface RtcSession {
   pc: RTCPeerConnection;
   localStream: MediaStream;
   remoteStream: MediaStream;
+  /** Latest known status — replayed to newly-attached onStatus subscribers. */
+  currentStatus: CallStatus;
   hangup: () => Promise<void>;
   onRemoteTrack: (cb: (stream: MediaStream) => void) => void;
   onStatus: (cb: (s: CallStatus) => void) => void;
   restartIce: () => Promise<void>;
 }
 
+/** Request mic with a clear error the UI can surface. */
 async function getMic(): Promise<MediaStream> {
-  return navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    video: false,
-  });
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Microphone is not available in this browser.");
+  }
+  // Proactive permission probe (best-effort — Safari lacks this API)
+  try {
+    const perms = (navigator as Navigator & { permissions?: Permissions }).permissions;
+    if (perms?.query) {
+      const status = await perms.query({ name: "microphone" as PermissionName });
+      if (status.state === "denied") {
+        throw new Error(
+          "Microphone permission is blocked. Enable it in your browser/site settings, then try again.",
+        );
+      }
+    }
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("Microphone permission")) throw e;
+    // ignore probe errors — fall through to getUserMedia
+  }
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      video: false,
+    });
+  } catch (e) {
+    const err = e as DOMException;
+    if (err.name === "NotAllowedError" || err.name === "SecurityError") {
+      throw new Error("Microphone access denied. Please allow microphone in your browser settings.");
+    }
+    if (err.name === "NotFoundError") throw new Error("No microphone found on this device.");
+    if (err.name === "NotReadableError") throw new Error("Microphone is in use by another app.");
+    throw new Error(err.message || "Could not access microphone.");
+  }
 }
 
 function attachIceCollectors(pc: RTCPeerConnection, callId: string, side: "caller" | "callee") {
@@ -83,15 +124,42 @@ export async function startOutgoingCall(params: {
 }): Promise<RtcSession> {
   const callId = callIdFor(params.caller, params.callee);
   const callRef = doc(db, "calls", callId);
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const iceServers = buildIceServers();
+  const pc = new RTCPeerConnection({ iceServers });
   const localStream = await getMic();
   localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
   const remoteStream = new MediaStream();
-  let remoteCb: ((s: MediaStream) => void) | null = null;
-  let statusCb: ((s: CallStatus) => void) | null = null;
+
+  const remoteCbs = new Set<(s: MediaStream) => void>();
+  const statusCbs = new Set<(s: CallStatus) => void>();
+  const session: RtcSession = {
+    callId,
+    pc,
+    localStream,
+    remoteStream,
+    currentStatus: "ringing",
+    hangup: async () => {},
+    onRemoteTrack: (cb) => {
+      remoteCbs.add(cb);
+      // Replay if tracks already arrived
+      if (remoteStream.getTracks().length) cb(remoteStream);
+    },
+    onStatus: (cb) => {
+      statusCbs.add(cb);
+      cb(session.currentStatus);
+    },
+    restartIce: async () => {
+      const o = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(o);
+      await updateDoc(callRef, { offer: { type: o.type, sdp: o.sdp } });
+    },
+  };
+
   pc.ontrack = (e) => {
-    e.streams[0].getTracks().forEach((t) => remoteStream.addTrack(t));
-    remoteCb?.(remoteStream);
+    e.streams[0].getTracks().forEach((t) => {
+      if (!remoteStream.getTracks().find((x) => x.id === t.id)) remoteStream.addTrack(t);
+    });
+    remoteCbs.forEach((cb) => cb(remoteStream));
   };
 
   attachIceCollectors(pc, callId, "caller");
@@ -110,7 +178,10 @@ export async function startOutgoingCall(params: {
   const unsubCall = onSnapshot(callRef, async (s) => {
     const data = s.data() as CallDoc | undefined;
     if (!data) return;
-    statusCb?.(data.status);
+    if (data.status !== session.currentStatus) {
+      session.currentStatus = data.status;
+      statusCbs.forEach((cb) => cb(data.status));
+    }
     if (data.answer && !pc.currentRemoteDescription) {
       await pc.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(() => {});
     }
@@ -127,32 +198,24 @@ export async function startOutgoingCall(params: {
         await updateDoc(callRef, { offer: { type: restart.type, sdp: restart.sdp } });
       } catch { /* ignore */ }
     }
+    if (pc.iceConnectionState === "failed") {
+      session.currentStatus = "ended";
+      statusCbs.forEach((cb) => cb("ended"));
+    }
   };
 
-  const hangup = async () => {
+  session.hangup = async () => {
+    try { pc.getSenders().forEach((s) => s.track && s.track.stop()); } catch { /* ignore */ }
     try { pc.close(); } catch { /* ignore */ }
     localStream.getTracks().forEach((t) => t.stop());
     unsubCall();
     unsubIce();
-    await updateDoc(callRef, { status: "ended" }).catch(() => {});
-    // Best-effort cleanup after 30s
-    setTimeout(() => { deleteDoc(callRef).catch(() => {}); }, 30_000);
+    // Fire-and-forget: update Firestore immediately so the other side ends fast
+    updateDoc(callRef, { status: "ended" }).catch(() => {});
+    setTimeout(() => { deleteDoc(callRef).catch(() => {}); }, 15_000);
   };
 
-  return {
-    callId,
-    pc,
-    localStream,
-    remoteStream,
-    hangup,
-    onRemoteTrack: (cb) => { remoteCb = cb; },
-    onStatus: (cb) => { statusCb = cb; },
-    restartIce: async () => {
-      const o = await pc.createOffer({ iceRestart: true });
-      await pc.setLocalDescription(o);
-      await updateDoc(callRef, { offer: { type: o.type, sdp: o.sdp } });
-    },
-  };
+  return session;
 }
 
 export async function acceptIncomingCall(callId: string): Promise<RtcSession> {
@@ -161,15 +224,37 @@ export async function acceptIncomingCall(callId: string): Promise<RtcSession> {
   const data = snap.data() as CallDoc | undefined;
   if (!data?.offer) throw new Error("Call is no longer available.");
 
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const iceServers = buildIceServers();
+  const pc = new RTCPeerConnection({ iceServers });
   const localStream = await getMic();
   localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
   const remoteStream = new MediaStream();
-  let remoteCb: ((s: MediaStream) => void) | null = null;
-  let statusCb: ((s: CallStatus) => void) | null = null;
+
+  const remoteCbs = new Set<(s: MediaStream) => void>();
+  const statusCbs = new Set<(s: CallStatus) => void>();
+  const session: RtcSession = {
+    callId,
+    pc,
+    localStream,
+    remoteStream,
+    currentStatus: "accepted",
+    hangup: async () => {},
+    onRemoteTrack: (cb) => {
+      remoteCbs.add(cb);
+      if (remoteStream.getTracks().length) cb(remoteStream);
+    },
+    onStatus: (cb) => {
+      statusCbs.add(cb);
+      cb(session.currentStatus);
+    },
+    restartIce: async () => { /* only caller restarts */ },
+  };
+
   pc.ontrack = (e) => {
-    e.streams[0].getTracks().forEach((t) => remoteStream.addTrack(t));
-    remoteCb?.(remoteStream);
+    e.streams[0].getTracks().forEach((t) => {
+      if (!remoteStream.getTracks().find((x) => x.id === t.id)) remoteStream.addTrack(t);
+    });
+    remoteCbs.forEach((cb) => cb(remoteStream));
   };
   attachIceCollectors(pc, callId, "callee");
 
@@ -183,38 +268,40 @@ export async function acceptIncomingCall(callId: string): Promise<RtcSession> {
 
   const unsubCall = onSnapshot(callRef, (s) => {
     const d = s.data() as CallDoc | undefined;
-    if (d) statusCb?.(d.status);
+    if (d && d.status !== session.currentStatus) {
+      session.currentStatus = d.status;
+      statusCbs.forEach((cb) => cb(d.status));
+    }
   });
   const unsubIce = watchRemoteCandidates(pc, callId, "callee");
 
-  const hangup = async () => {
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === "failed") {
+      session.currentStatus = "ended";
+      statusCbs.forEach((cb) => cb("ended"));
+    }
+  };
+
+  session.hangup = async () => {
+    try { pc.getSenders().forEach((s) => s.track && s.track.stop()); } catch { /* ignore */ }
     try { pc.close(); } catch { /* ignore */ }
     localStream.getTracks().forEach((t) => t.stop());
     unsubCall();
     unsubIce();
-    await updateDoc(callRef, { status: "ended" }).catch(() => {});
+    updateDoc(callRef, { status: "ended" }).catch(() => {});
   };
 
-  return {
-    callId,
-    pc,
-    localStream,
-    remoteStream,
-    hangup,
-    onRemoteTrack: (cb) => { remoteCb = cb; },
-    onStatus: (cb) => { statusCb = cb; },
-    restartIce: async () => { /* only caller restarts */ },
-  };
+  return session;
 }
 
 export async function declineCall(callId: string) {
-  await updateDoc(doc(db, "calls", callId), { status: "declined" }).catch(() => {});
-  setTimeout(() => { deleteDoc(doc(db, "calls", callId)).catch(() => {}); }, 15_000);
+  // Fire-and-forget so the UI closes instantly
+  updateDoc(doc(db, "calls", callId), { status: "declined" }).catch(() => {});
+  setTimeout(() => { deleteDoc(doc(db, "calls", callId)).catch(() => {}); }, 10_000);
 }
 
 /**
  * Combine local + remote audio tracks into a single MediaStream (for MediaRecorder).
- * Runs entirely in-browser — nothing leaves the device.
  */
 export function mixAudio(local: MediaStream, remote: MediaStream): { mixed: MediaStream; ctx: AudioContext } {
   const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
