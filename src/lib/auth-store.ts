@@ -38,6 +38,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user: null, profile: null, loading: false });
         return;
       }
+      // Unblock the UI immediately — profile hydrates in the background.
+      set({ user, loading: false });
       const ref = doc(db, "users", user.uid);
       const snap = await getDoc(ref);
       let profile: UserProfile;
@@ -58,9 +60,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         profile = base;
       } else {
         profile = { uid: user.uid, ...(snap.data() as Omit<UserProfile, "uid">) };
-        await updateDoc(ref, { "presence.online": true, "presence.lastSeen": serverTimestamp() });
+        updateDoc(ref, { "presence.online": true, "presence.lastSeen": serverTimestamp() }).catch(() => {});
       }
-      set({ user, profile, loading: false });
+      set({ profile });
 
       // Presence heartbeat + offline on unload
       const heartbeat = setInterval(() => {
