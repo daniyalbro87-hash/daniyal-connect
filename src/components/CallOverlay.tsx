@@ -178,66 +178,98 @@ export function CallOverlay() {
           ? `${mm}:${ss}`
           : "Connecting…";
 
+  const isIncoming = ui === "incoming";
+
   return (
-    <div className="fixed inset-0 z-[100] bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white flex flex-col items-center justify-between p-8 animate-fade-up">
-      <audio ref={audioRef} autoPlay playsInline />
-      <div className="mt-12 text-center">
-        <div className="text-xs uppercase tracking-[0.25em] opacity-70">{label}</div>
+    <div className="fixed inset-0 z-[100] text-white flex flex-col items-center justify-between p-6 animate-fade-up overflow-hidden">
+      {/* Background: blurred avatar + gradient */}
+      <div className="absolute inset-0 -z-10">
+        {peer?.photoURL ? (
+          <img src={peer.photoURL} alt="" className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-60" />
+        ) : null}
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950/80 via-indigo-950/80 to-slate-900/90" />
       </div>
-      <div className="flex flex-col items-center gap-5">
+
+      <audio ref={audioRef} autoPlay playsInline />
+
+      <div className="mt-10 text-center animate-fade-up">
+        <div className="text-[11px] uppercase tracking-[0.3em] opacity-80 font-medium">
+          {isIncoming ? "Daniyal Chat • Incoming voice call" : label}
+        </div>
+      </div>
+
+      <div className="flex flex-col items-center gap-5 animate-fade-up">
         <div className="relative">
-          <div className="absolute -inset-2 rounded-full bg-white/10 blur-2xl animate-pulse" />
+          {isIncoming && (
+            <>
+              <span className="absolute inset-0 rounded-full ring-2 ring-white/30 animate-ping" />
+              <span className="absolute -inset-4 rounded-full ring-2 ring-white/10 animate-ping [animation-delay:200ms]" />
+              <span className="absolute -inset-8 rounded-full ring-2 ring-white/5 animate-ping [animation-delay:400ms]" />
+            </>
+          )}
+          <div className="absolute -inset-2 rounded-full bg-white/10 blur-2xl" />
           {peer?.photoURL ? (
-            <img src={peer.photoURL} alt="" className="relative w-40 h-40 rounded-full object-cover shadow-2xl ring-4 ring-white/10" />
+            <img src={peer.photoURL} alt="" className="relative w-44 h-44 rounded-full object-cover shadow-2xl ring-4 ring-white/20" />
           ) : (
-            <div className="relative w-40 h-40 rounded-full gradient-brand grid place-items-center text-6xl font-bold shadow-2xl">
+            <div className="relative w-44 h-44 rounded-full gradient-brand grid place-items-center text-7xl font-bold shadow-2xl ring-4 ring-white/20">
               {peer?.displayName?.[0]?.toUpperCase() || "?"}
             </div>
           )}
         </div>
-        <div className="text-2xl font-bold tracking-tight">{peer?.displayName || "Unknown"}</div>
+        <div className="text-3xl font-bold tracking-tight text-center">{peer?.displayName || "Unknown"}</div>
         {peer?.username && <div className="text-sm opacity-70">@{peer.username}</div>}
+        {!isIncoming && (
+          <div className="text-sm opacity-80 tabular-nums">{label}</div>
+        )}
         {error && <div className="text-sm text-red-300 mt-2 text-center max-w-xs">{error}</div>}
       </div>
 
-      <div className="w-full max-w-sm mb-4">
-        {ui === "incoming" ? (
-          <div className="flex items-center justify-around">
+      <div className="w-full max-w-sm mb-6">
+        {isIncoming ? (
+          <div className="flex items-center justify-between px-4">
             <button
               onClick={decline}
-              className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 active:scale-95 grid place-items-center shadow-xl transition"
-              aria-label="Decline"
+              className="flex flex-col items-center gap-2 group"
+              aria-label="Decline call"
             >
-              <PhoneOff />
+              <span className="relative w-[68px] h-[68px] rounded-full bg-red-500 grid place-items-center shadow-[0_10px_40px_-8px_rgba(239,68,68,0.7)] group-active:scale-90 transition-transform">
+                <span className="absolute inset-0 rounded-full bg-red-500/40 animate-ping" />
+                <PhoneOff size={26} className="relative" />
+              </span>
+              <span className="text-xs font-medium opacity-80">Decline</span>
             </button>
             <button
               onClick={accept}
               disabled={busy}
-              className="w-16 h-16 rounded-full bg-emerald-500 hover:bg-emerald-600 active:scale-95 grid place-items-center shadow-xl transition disabled:opacity-70"
-              aria-label="Accept"
+              className="flex flex-col items-center gap-2 group disabled:opacity-60"
+              aria-label="Accept call"
             >
-              <Phone />
+              <span className="relative w-[68px] h-[68px] rounded-full bg-emerald-500 grid place-items-center shadow-[0_10px_40px_-8px_rgba(16,185,129,0.7)] group-active:scale-90 transition-transform">
+                <span className="absolute inset-0 rounded-full bg-emerald-500/40 animate-ping" />
+                <Phone size={26} className="relative" />
+              </span>
+              <span className="text-xs font-medium opacity-80">Accept</span>
             </button>
           </div>
         ) : (
           <div className="flex items-center justify-around">
             <button
               onClick={toggleMute}
-              className={`w-14 h-14 rounded-full grid place-items-center shadow-xl active:scale-95 transition ${muted ? "bg-white text-slate-900" : "bg-white/10 hover:bg-white/20"}`}
+              className={`w-14 h-14 rounded-full grid place-items-center shadow-xl active:scale-90 transition backdrop-blur-xl ${muted ? "bg-white text-slate-900" : "bg-white/10 hover:bg-white/20"}`}
               aria-label="Mute"
             >
               {muted ? <MicOff /> : <Mic />}
             </button>
             <button
               onClick={endCall}
-              className="w-16 h-16 rounded-full bg-red-500 hover:bg-red-600 active:scale-95 grid place-items-center shadow-xl transition"
+              className="w-[68px] h-[68px] rounded-full bg-red-500 hover:bg-red-600 active:scale-90 grid place-items-center shadow-[0_10px_40px_-8px_rgba(239,68,68,0.7)] transition"
               aria-label="End call"
             >
-              <PhoneOff />
+              <PhoneOff size={26} />
             </button>
             <button
               onClick={() => setSpeaker((s) => !s)}
-              className={`w-14 h-14 rounded-full grid place-items-center shadow-xl active:scale-95 transition ${speaker ? "bg-white/10 hover:bg-white/20" : "bg-white text-slate-900"}`}
+              className={`w-14 h-14 rounded-full grid place-items-center shadow-xl active:scale-90 transition backdrop-blur-xl ${speaker ? "bg-white/10 hover:bg-white/20" : "bg-white text-slate-900"}`}
               aria-label="Speaker"
             >
               {speaker ? <Volume2 /> : <Volume1 />}
@@ -248,3 +280,4 @@ export function CallOverlay() {
     </div>
   );
 }
+

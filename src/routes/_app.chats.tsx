@@ -36,12 +36,28 @@ interface UserLite {
   presence?: { online?: boolean; lastSeen?: { toMillis?: () => number } };
 }
 
+const CACHE_KEY = (uid: string) => `dc.chats.${uid}`;
+interface CachedChats { chats: ChatItem[]; others: Record<string, UserLite> }
+
+function loadCache(uid?: string): CachedChats | null {
+  if (!uid || typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY(uid));
+    return raw ? (JSON.parse(raw) as CachedChats) : null;
+  } catch { return null; }
+}
+function saveCache(uid: string, data: CachedChats) {
+  try { localStorage.setItem(CACHE_KEY(uid), JSON.stringify(data)); } catch { /* quota */ }
+}
+
 function ChatsPage() {
   const { user, profile } = useAuthStore();
   const navigate = useNavigate();
-  const [chats, setChats] = useState<ChatItem[]>([]);
-  const [chatsLoaded, setChatsLoaded] = useState(false);
-  const [others, setOthers] = useState<Record<string, UserLite>>({});
+  // Hydrate from cache synchronously so the list is visible on first paint.
+  const cached = useMemo(() => loadCache(user?.uid), [user?.uid]);
+  const [chats, setChats] = useState<ChatItem[]>(cached?.chats ?? []);
+  const [chatsLoaded, setChatsLoaded] = useState(!!cached);
+  const [others, setOthers] = useState<Record<string, UserLite>>(cached?.others ?? {});
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<UserLite[]>([]);
   const [searching, setSearching] = useState(false);
@@ -61,6 +77,8 @@ function ChatsPage() {
       const items = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ChatItem, "id">) }));
       setChats(items);
       setChatsLoaded(true);
+      // Persist chats immediately — the next open renders instantly.
+      saveCache(user.uid, { chats: items, others });
       const otherIds = Array.from(
         new Set(items.flatMap((c) => c.participants.filter((p) => p !== user.uid))),
       ).filter((id) => !others[id]);
@@ -74,7 +92,13 @@ function ChatsPage() {
             s.forEach((d) => (updates[uid] = d.data() as UserLite));
           }),
         );
-        if (Object.keys(updates).length) setOthers((prev) => ({ ...prev, ...updates }));
+        if (Object.keys(updates).length) {
+          setOthers((prev) => {
+            const merged = { ...prev, ...updates };
+            saveCache(user.uid, { chats: items, others: merged });
+            return merged;
+          });
+        }
       }
     }, (err) => {
       console.error("chats snapshot error", err);
@@ -83,6 +107,7 @@ function ChatsPage() {
     return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
+
 
   // Track my outgoing pending friend requests to show "Requested" state
   useEffect(() => {
