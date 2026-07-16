@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCallStore } from "../lib/call-store";
-import { acceptIncomingCall, declineCall, mixAudio } from "../lib/webrtc";
+import { acceptIncomingCall, declineCall, mixAudio, unlockAudioPlayback } from "../lib/webrtc";
 import { useSettingsStore } from "../lib/settings-store";
 import { Phone, PhoneOff, Mic, MicOff, Volume2, Volume1 } from "lucide-react";
 
@@ -42,9 +42,11 @@ export function CallOverlay() {
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [playBlocked, setPlayBlocked] = useState(false);
   const recRef = useRef<{ rec: MediaRecorder; chunks: Blob[]; ctx: AudioContext } | null>(null);
   const callRecording = useSettingsStore((s) => s.settings.callRecording);
   const endedRef = useRef(false);
+  const acceptLockRef = useRef(false);
 
   useRingtone(ui === "incoming" || (ui === "outgoing" && status === "ringing"));
 
@@ -56,8 +58,15 @@ export function CallOverlay() {
     const a = audioRef.current;
     a.srcObject = session.remoteStream;
     a.autoplay = true;
+    a.muted = false;
+    a.volume = 1;
     a.setAttribute("playsinline", "");
-    const tryPlay = () => a.play().catch(() => {});
+    const tryPlay = () => {
+      a.muted = false;
+      a.volume = 1;
+      if (a.srcObject !== session.remoteStream) a.srcObject = session.remoteStream;
+      return a.play().then(() => setPlayBlocked(false)).catch(() => setPlayBlocked(true));
+    };
     tryPlay();
 
     // Also listen for future tracks (some browsers need play() re-invoked)
@@ -65,6 +74,26 @@ export function CallOverlay() {
       a.srcObject = session.remoteStream;
       tryPlay();
     });
+
+    const onTrackActive = () => { tryPlay(); };
+    session.remoteStream.addEventListener("addtrack", onTrackActive);
+    const statsTimer = window.setInterval(async () => {
+      try {
+        const d = await session.getDiagnostics();
+        const connected = d.iceConnectionState === "connected" || d.iceConnectionState === "completed";
+        const hasRemoteTrack = d.remoteAudioTracks.some((t) => t.readyState === "live" && t.enabled);
+        if (connected && hasRemoteTrack && d.inboundAudio.packetsReceived > 0) tryPlay();
+        if (connected && d.outboundAudio.packetsSent === 0) {
+          console.warn("Call audio diagnostics: microphone track exists but no outbound RTP audio packets yet", d);
+        }
+        if (connected && d.remoteAudioTracks.length > 0 && d.inboundAudio.packetsReceived === 0) {
+          console.warn("Call audio diagnostics: remote audio track exists but no inbound RTP audio packets yet", d);
+        }
+        if (connected && hasRemoteTrack && d.inboundAudio.packetsReceived > 0 && a.paused) {
+          setPlayBlocked(true);
+        }
+      } catch { /* ignore diagnostics failures */ }
+    }, 1500);
 
     session.onStatus((s) => {
       set({ status: s });
@@ -88,6 +117,10 @@ export function CallOverlay() {
         endCall();
       }
     });
+    return () => {
+      window.clearInterval(statsTimer);
+      session.remoteStream.removeEventListener("addtrack", onTrackActive);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
@@ -100,7 +133,7 @@ export function CallOverlay() {
   useEffect(() => {
     const a = audioRef.current as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
     if (!a?.setSinkId) return;
-    a.setSinkId(speaker ? "default" : "").catch(() => {});
+    a.setSinkId("default").catch(() => {});
   }, [speaker]);
 
   const finalizeRecording = () => {
@@ -128,6 +161,9 @@ export function CallOverlay() {
     // Reset UI INSTANTLY — teardown runs in the background.
     const s = session;
     reset();
+    setBusy(false);
+    acceptLockRef.current = false;
+    setPlayBlocked(false);
     setMuted(false);
     setElapsed(0);
     finalizeRecording();
@@ -137,24 +173,31 @@ export function CallOverlay() {
   };
 
   const accept = async () => {
-    if (!incomingCallId || busy) return;
+    if (!incomingCallId || busy || acceptLockRef.current) return;
+    acceptLockRef.current = true;
     setBusy(true);
     setError(null);
     try {
+      unlockAudioPlayback().catch(() => {});
       const s = await acceptIncomingCall(incomingCallId);
       set({ session: s, ui: "in-call", status: "accepted", startedAt: Date.now(), incomingCallId: null });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to accept");
       reset();
+      acceptLockRef.current = false;
     } finally {
       setBusy(false);
     }
   };
 
   const decline = async () => {
+    if (busy || acceptLockRef.current) return;
+    acceptLockRef.current = true;
     const id = incomingCallId;
     reset(); // instant UI close
+    setBusy(false);
     if (id) declineCall(id).catch(() => {});
+    setTimeout(() => { acceptLockRef.current = false; }, 500);
   };
 
   const toggleMute = () => {
@@ -222,6 +265,15 @@ export function CallOverlay() {
           <div className="text-sm opacity-80 tabular-nums">{label}</div>
         )}
         {error && <div className="text-sm text-red-300 mt-2 text-center max-w-xs">{error}</div>}
+        {playBlocked && ui === "in-call" && (
+          <button
+            type="button"
+            onClick={() => unlockAudioPlayback().then(() => audioRef.current?.play()).catch(() => {})}
+            className="text-sm text-white bg-white/15 hover:bg-white/25 rounded-full px-4 py-2 mt-2 active:scale-95 transition"
+          >
+            Tap to resume audio
+          </button>
+        )}
       </div>
 
       <div className="w-full max-w-sm mb-6">
@@ -229,6 +281,7 @@ export function CallOverlay() {
           <div className="flex items-center justify-between px-4">
             <button
               onClick={decline}
+              disabled={busy}
               className="flex flex-col items-center gap-2 group"
               aria-label="Decline call"
             >
