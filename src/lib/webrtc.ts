@@ -349,7 +349,7 @@ async function startOutgoingCallInternal(params: {
       const existing = await tx.get(callRef);
       const current = existing.data() as CallDoc | undefined;
       const created = (current?.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() || 0;
-      const active = current && (current.status === "ringing" || current.status === "accepted") && Date.now() - created < 60_000;
+      const active = current && (current.status === "ringing" || current.status === "accepted") && (!created || Date.now() - created < 60_000);
       if (active) throw new Error("A call is already in progress.");
       tx.set(callRef, {
         caller: params.caller,
@@ -417,7 +417,10 @@ export async function acceptIncomingCall(callId: string): Promise<RtcSession> {
   const localStreamPromise = getMic();
   const snap = await getDoc(callRef);
   const data = snap.data() as CallDoc | undefined;
-  if (!data?.offer) throw new Error("Call is no longer available.");
+  if (!data?.offer) {
+    localStreamPromise.then((stream) => stream.getTracks().forEach((t) => t.stop())).catch(() => {});
+    throw new Error("Call is no longer available.");
+  }
   const callNonce = data.callNonce || makeCallNonce();
 
   const iceServers = buildIceServers();
