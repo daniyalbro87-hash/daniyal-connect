@@ -82,6 +82,25 @@ export interface RtcSession {
   getDiagnostics: () => Promise<CallDiagnostics>;
 }
 
+/** Prime browser audio output from the tap/click gesture before async WebRTC work. */
+export async function unlockAudioPlayback(): Promise<void> {
+  if (typeof window === "undefined") return;
+  const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (AC) {
+    try {
+      const ctx = new AC();
+      if (ctx.state === "suspended") await ctx.resume();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.00001;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.03);
+      setTimeout(() => ctx.close().catch(() => {}), 120);
+    } catch { /* ignore */ }
+  }
+}
+
 /** Request mic with a clear error the UI can surface. */
 async function getMic(): Promise<MediaStream> {
   if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
