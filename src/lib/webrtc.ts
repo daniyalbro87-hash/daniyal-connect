@@ -159,6 +159,23 @@ function assertAudioSdp(desc: RTCSessionDescriptionInit, label: string) {
   }
 }
 
+function attachRemoteAudioTrack(
+  event: RTCTrackEvent,
+  remoteStream: MediaStream,
+  remoteCbs: Set<(s: MediaStream) => void>,
+) {
+  const tracks = event.streams[0]?.getAudioTracks?.().length
+    ? event.streams[0].getAudioTracks()
+    : event.track.kind === "audio"
+      ? [event.track]
+      : [];
+  tracks.forEach((track) => {
+    track.enabled = true;
+    if (!remoteStream.getAudioTracks().find((x) => x.id === track.id)) remoteStream.addTrack(track);
+  });
+  if (tracks.length) remoteCbs.forEach((cb) => cb(remoteStream));
+}
+
 async function getDiagnosticsFor(session: Pick<RtcSession, "pc" | "localStream" | "remoteStream">): Promise<CallDiagnostics> {
   const stats = await session.pc.getStats();
   const outboundAudio = { bytesSent: 0, packetsSent: 0, audioLevel: undefined as number | undefined, totalAudioEnergy: undefined as number | undefined };
@@ -318,11 +335,7 @@ async function startOutgoingCallInternal(params: {
   };
 
   pc.ontrack = (e) => {
-    e.streams[0].getTracks().forEach((t) => {
-      t.enabled = true;
-      if (!remoteStream.getTracks().find((x) => x.id === t.id)) remoteStream.addTrack(t);
-    });
-    remoteCbs.forEach((cb) => cb(remoteStream));
+    attachRemoteAudioTrack(e, remoteStream, remoteCbs);
   };
 
   attachIceCollectors(pc, callId, "caller", callNonce);
@@ -422,11 +435,7 @@ export async function acceptIncomingCall(callId: string): Promise<RtcSession> {
   };
 
   pc.ontrack = (e) => {
-    e.streams[0].getTracks().forEach((t) => {
-      t.enabled = true;
-      if (!remoteStream.getTracks().find((x) => x.id === t.id)) remoteStream.addTrack(t);
-    });
-    remoteCbs.forEach((cb) => cb(remoteStream));
+    attachRemoteAudioTrack(e, remoteStream, remoteCbs);
   };
   attachIceCollectors(pc, callId, "callee", callNonce);
   const remoteIce = watchRemoteCandidates(pc, callId, "callee", callNonce);
