@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
   onSnapshot,
@@ -39,11 +39,23 @@ interface UserLite {
 const CACHE_KEY = (uid: string) => `dc.chats.${uid}`;
 interface CachedChats { chats: ChatItem[]; others: Record<string, UserLite> }
 
+function reviveChat(c: ChatItem): ChatItem {
+  const raw = c.lastMessageAt as unknown as { seconds?: number; nanoseconds?: number; toMillis?: () => number } | null;
+  return {
+    ...c,
+    lastMessageAt: raw && !raw.toMillis && typeof raw.seconds === "number"
+      ? { toMillis: () => raw.seconds! * 1000 + Math.floor((raw.nanoseconds || 0) / 1_000_000) }
+      : c.lastMessageAt,
+  };
+}
+
 function loadCache(uid?: string): CachedChats | null {
   if (!uid || typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(CACHE_KEY(uid));
-    return raw ? (JSON.parse(raw) as CachedChats) : null;
+    if (!raw) return null;
+    const data = JSON.parse(raw) as CachedChats;
+    return { chats: data.chats.map(reviveChat), others: data.others || {} };
   } catch { return null; }
 }
 function saveCache(uid: string, data: CachedChats) {
@@ -65,6 +77,19 @@ function ChatsPage() {
     {},
   );
   const [pendingOut, setPendingOut] = useState<Set<string>>(new Set());
+  const chatsRef = useRef(chats);
+  const othersRef = useRef(others);
+
+  useEffect(() => { chatsRef.current = chats; }, [chats]);
+  useEffect(() => { othersRef.current = others; }, [others]);
+
+  useEffect(() => {
+    const warm = loadCache(user?.uid);
+    if (!user?.uid || !warm) return;
+    setChats(warm.chats);
+    setOthers(warm.others);
+    setChatsLoaded(true);
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) return;
@@ -78,10 +103,10 @@ function ChatsPage() {
       setChats(items);
       setChatsLoaded(true);
       // Persist chats immediately — the next open renders instantly.
-      saveCache(user.uid, { chats: items, others });
+      saveCache(user.uid, { chats: items, others: othersRef.current });
       const otherIds = Array.from(
         new Set(items.flatMap((c) => c.participants.filter((p) => p !== user.uid))),
-      ).filter((id) => !others[id]);
+      ).filter((id) => !othersRef.current[id]);
       if (otherIds.length) {
         const updates: Record<string, UserLite> = {};
         await Promise.all(
@@ -107,6 +132,22 @@ function ChatsPage() {
     return () => unsub();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid || chats.length === 0) return;
+    const ids = Array.from(new Set(chats.flatMap((c) => c.participants.filter((p) => p !== user.uid))));
+    const unsubs = ids.map((uid) =>
+      onSnapshot(doc(db, "users", uid), (snap) => {
+        if (!snap.exists()) return;
+        setOthers((prev) => {
+          const next = { ...prev, [uid]: snap.data() as UserLite };
+          saveCache(user.uid, { chats: chatsRef.current, others: next });
+          return next;
+        });
+      }),
+    );
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [user?.uid, chats]);
 
 
   // Track my outgoing pending friend requests to show "Requested" state
