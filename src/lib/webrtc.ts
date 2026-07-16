@@ -5,6 +5,7 @@ import {
   doc,
   getDoc,
   onSnapshot,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -343,15 +344,28 @@ async function startOutgoingCallInternal(params: {
   const offer = await pc.createOffer();
   assertAudioSdp(offer, "Offer");
   await pc.setLocalDescription(offer);
-  await setDoc(callRef, {
-    caller: params.caller,
-    callee: params.callee,
-    status: "ringing",
-    offer: { type: offer.type, sdp: offer.sdp },
-    callerProfile: params.callerProfile,
-    callNonce,
-    createdAt: serverTimestamp(),
-  } satisfies CallDoc);
+  try {
+    await runTransaction(db, async (tx) => {
+      const existing = await tx.get(callRef);
+      const current = existing.data() as CallDoc | undefined;
+      const created = (current?.createdAt as { toMillis?: () => number } | undefined)?.toMillis?.() || 0;
+      const active = current && (current.status === "ringing" || current.status === "accepted") && Date.now() - created < 60_000;
+      if (active) throw new Error("A call is already in progress.");
+      tx.set(callRef, {
+        caller: params.caller,
+        callee: params.callee,
+        status: "ringing",
+        offer: { type: offer.type, sdp: offer.sdp },
+        callerProfile: params.callerProfile,
+        callNonce,
+        createdAt: serverTimestamp(),
+      } satisfies CallDoc);
+    });
+  } catch (e) {
+    try { pc.close(); } catch { /* ignore */ }
+    localStream.getTracks().forEach((t) => t.stop());
+    throw e;
+  }
 
   const remoteIce = watchRemoteCandidates(pc, callId, "caller", callNonce);
   const unsubCall = onSnapshot(callRef, async (s) => {
