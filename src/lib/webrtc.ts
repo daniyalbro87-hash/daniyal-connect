@@ -150,7 +150,7 @@ async function getDiagnosticsFor(session: Pick<RtcSession, "pc" | "localStream" 
       inboundAudio.packetsLost += Number(r.packetsLost || 0);
       if (typeof r.jitter === "number") inboundAudio.jitter = r.jitter;
     }
-    if ((r.type === "media-source" || r.type === "track") && kind === "audio") {
+    if ((r.type === "media-source" || String(r.type) === "track") && kind === "audio") {
       if (typeof r.audioLevel === "number") outboundAudio.audioLevel = r.audioLevel;
       if (typeof r.totalAudioEnergy === "number") outboundAudio.totalAudioEnergy = r.totalAudioEnergy;
     }
