@@ -55,6 +55,15 @@ function makeCallNonce() {
 
 type CandidateDoc = RTCIceCandidateInit & { callNonce?: string };
 
+function cleanupCallDoc(callId: string, callNonce: string, delayMs: number) {
+  setTimeout(async () => {
+    const ref = doc(db, "calls", callId);
+    const snap = await getDoc(ref).catch(() => null);
+    const data = snap?.data() as CallDoc | undefined;
+    if (data?.callNonce === callNonce) deleteDoc(ref).catch(() => {});
+  }, delayMs);
+}
+
 export interface CallDiagnostics {
   connectionState: RTCPeerConnectionState;
   iceConnectionState: RTCIceConnectionState;
@@ -331,6 +340,7 @@ async function startOutgoingCallInternal(params: {
     createdAt: serverTimestamp(),
   } satisfies CallDoc);
 
+  const remoteIce = watchRemoteCandidates(pc, callId, "caller", callNonce);
   const unsubCall = onSnapshot(callRef, async (s) => {
     const data = s.data() as CallDoc | undefined;
     if (!data || data.callNonce !== callNonce) return;
@@ -343,7 +353,6 @@ async function startOutgoingCallInternal(params: {
       remoteIce.flush();
     }
   });
-  const remoteIce = watchRemoteCandidates(pc, callId, "caller", callNonce);
 
   let restartedOnce = false;
   pc.oniceconnectionstatechange = async () => {
@@ -369,7 +378,7 @@ async function startOutgoingCallInternal(params: {
     localStream.getTracks().forEach((t) => t.stop());
     unsubCall();
     remoteIce.unsubscribe();
-    setTimeout(() => { deleteDoc(callRef).catch(() => {}); }, 15_000);
+    cleanupCallDoc(callId, callNonce, 15_000);
   };
 
   return session;
@@ -462,8 +471,12 @@ export async function acceptIncomingCall(callId: string): Promise<RtcSession> {
 
 export async function declineCall(callId: string) {
   // Fire-and-forget so the UI closes instantly
-  updateDoc(doc(db, "calls", callId), { status: "declined" }).catch(() => {});
-  setTimeout(() => { deleteDoc(doc(db, "calls", callId)).catch(() => {}); }, 10_000);
+  const ref = doc(db, "calls", callId);
+  updateDoc(ref, { status: "declined" }).catch(() => {});
+  getDoc(ref).then((snap) => {
+    const nonce = (snap.data() as CallDoc | undefined)?.callNonce;
+    if (nonce) cleanupCallDoc(callId, nonce, 10_000);
+  }).catch(() => {});
 }
 
 /**
