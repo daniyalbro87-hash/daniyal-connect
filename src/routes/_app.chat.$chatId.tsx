@@ -10,7 +10,7 @@ import { MessageMedia } from "../components/MessageMedia";
 import { ImageViewer } from "../components/ImageViewer";
 import { Composer } from "../components/Composer";
 import { Phone } from "lucide-react";
-import { startOutgoingCall } from "../lib/webrtc";
+import { startOutgoingCall, unlockAudioPlayback } from "../lib/webrtc";
 import { useCallStore } from "../lib/call-store";
 
 export const Route = createFileRoute("/_app/chat/$chatId")({
@@ -36,7 +36,10 @@ function ChatPage() {
   const [other, setOther] = useState<UserLite | null>(null);
   const [theyTyping, setTheyTyping] = useState(false);
   const [viewer, setViewer] = useState<{ urls: string[]; index: number } | null>(null);
+  const [callPending, setCallPending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const callLockRef = useRef(false);
+  const callUi = useCallStore((s) => s.ui);
 
   const otherId = chatId.split("_").find((p: string) => p !== user?.uid) || "";
 
@@ -135,7 +138,22 @@ function ChatPage() {
         </div>
         <button
           onClick={async () => {
-            if (!other || !profile) return;
+            if (!other || !profile || callPending || callLockRef.current || callUi !== "idle") return;
+            callLockRef.current = true;
+            setCallPending(true);
+            unlockAudioPlayback().catch(() => {});
+            useCallStore.getState().set({
+              ui: "outgoing",
+              session: null,
+              peer: {
+                uid: other.uid,
+                displayName: other.displayName,
+                photoURL: other.photoURL,
+                username: other.username,
+              },
+              status: "ringing",
+              startedAt: null,
+            });
             try {
               const session = await startOutgoingCall({
                 caller: user.uid,
@@ -160,10 +178,15 @@ function ChatPage() {
               });
             } catch (e) {
               console.error("Call failed", e);
+              useCallStore.getState().reset();
               alert(e instanceof Error ? e.message : "Could not start call");
+            } finally {
+              setCallPending(false);
+              setTimeout(() => { callLockRef.current = false; }, 500);
             }
           }}
-          className="p-2 rounded-full hover:bg-muted transition shrink-0"
+          disabled={callPending || callUi !== "idle"}
+          className="p-2 rounded-full hover:bg-muted transition shrink-0 disabled:opacity-50 disabled:pointer-events-none"
           aria-label="Voice call"
         >
           <Phone size={20} />
