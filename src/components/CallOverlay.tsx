@@ -133,7 +133,7 @@ export function CallOverlay() {
   useEffect(() => {
     const a = audioRef.current as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
     if (!a?.setSinkId) return;
-    a.setSinkId(speaker ? "default" : "").catch(() => {});
+    a.setSinkId("default").catch(() => {});
   }, [speaker]);
 
   const finalizeRecording = () => {
