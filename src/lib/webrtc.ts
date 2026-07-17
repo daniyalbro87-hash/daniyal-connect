@@ -324,7 +324,7 @@ async function startOutgoingCallInternal(params: {
   const iceServers = buildIceServers();
   const pc = new RTCPeerConnection({ iceServers });
   const localStream = await getMic();
-  localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+  addLocalTracksOnce(pc, localStream);
   const remoteStream = new MediaStream();
 
   const remoteCbs = new Set<(s: MediaStream) => void>();
@@ -339,12 +339,13 @@ async function startOutgoingCallInternal(params: {
     hangup: async () => {},
     onRemoteTrack: (cb) => {
       remoteCbs.add(cb);
-      // Replay if tracks already arrived
       if (remoteStream.getTracks().length) cb(remoteStream);
+      return () => { remoteCbs.delete(cb); };
     },
     onStatus: (cb) => {
       statusCbs.add(cb);
       cb(session.currentStatus);
+      return () => { statusCbs.delete(cb); };
     },
     restartIce: async () => {
       const o = await pc.createOffer({ iceRestart: true });
