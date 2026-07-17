@@ -123,19 +123,26 @@ function ChatPage() {
             <path d="M15 18l-6-6 6-6" />
           </svg>
         </button>
-        {other?.photoURL ? (
-          <img src={other.photoURL} alt="" className="w-10 h-10 rounded-full object-cover" />
-        ) : (
-          <div className="w-10 h-10 rounded-full gradient-brand grid place-items-center text-white font-bold">
-            {other?.displayName?.[0]?.toUpperCase() || "?"}
+        <button
+          type="button"
+          onClick={() => otherId && navigate({ to: "/user/$uid", params: { uid: otherId } })}
+          className="flex items-center gap-3 min-w-0 flex-1 text-left hover:opacity-80 transition"
+          aria-label="View profile"
+        >
+          {other?.photoURL ? (
+            <img src={other.photoURL} alt="" className="w-10 h-10 rounded-full object-cover" />
+          ) : (
+            <div className="w-10 h-10 rounded-full gradient-brand grid place-items-center text-white font-bold">
+              {other?.displayName?.[0]?.toUpperCase() || "?"}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold truncate">{other?.displayName || "…"}</div>
+            <div className={`text-xs ${theyTyping ? "text-primary" : "text-muted-foreground"}`}>
+              {presenceLine}
+            </div>
           </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="font-semibold truncate">{other?.displayName || "…"}</div>
-          <div className={`text-xs ${theyTyping ? "text-primary" : "text-muted-foreground"}`}>
-            {presenceLine}
-          </div>
-        </div>
+        </button>
         <button
           onClick={async () => {
             if (!other || !profile || callPending || callLockRef.current || callUi !== "idle") return;
