@@ -69,8 +69,7 @@ export function CallOverlay() {
     };
     tryPlay();
 
-    // Also listen for future tracks (some browsers need play() re-invoked)
-    session.onRemoteTrack(() => {
+    const unsubTrack = session.onRemoteTrack(() => {
       a.srcObject = session.remoteStream;
       tryPlay();
     });
@@ -83,24 +82,18 @@ export function CallOverlay() {
         const connected = d.iceConnectionState === "connected" || d.iceConnectionState === "completed";
         const hasRemoteTrack = d.remoteAudioTracks.some((t) => t.readyState === "live" && t.enabled);
         if (connected && hasRemoteTrack && d.inboundAudio.packetsReceived > 0) tryPlay();
-        if (connected && d.outboundAudio.packetsSent === 0) {
-          console.warn("Call audio diagnostics: microphone track exists but no outbound RTP audio packets yet", d);
-        }
-        if (connected && d.remoteAudioTracks.length > 0 && d.inboundAudio.packetsReceived === 0) {
-          console.warn("Call audio diagnostics: remote audio track exists but no inbound RTP audio packets yet", d);
-        }
         if (connected && hasRemoteTrack && d.inboundAudio.packetsReceived > 0 && a.paused) {
           setPlayBlocked(true);
         }
       } catch { /* ignore diagnostics failures */ }
     }, 1500);
 
-    session.onStatus((s) => {
+    const unsubStatus = session.onStatus((s) => {
       set({ status: s });
       if (s === "accepted" && useCallStore.getState().ui !== "in-call") {
         set({ ui: "in-call", startedAt: Date.now() });
         tryPlay();
-        if (callRecording) {
+        if (callRecording && !recRef.current) {
           try {
             const { mixed, ctx } = mixAudio(session.localStream, session.remoteStream);
             const rec = new MediaRecorder(mixed, { mimeType: "audio/webm;codecs=opus" });
@@ -120,6 +113,8 @@ export function CallOverlay() {
     return () => {
       window.clearInterval(statsTimer);
       session.remoteStream.removeEventListener("addtrack", onTrackActive);
+      unsubTrack();
+      unsubStatus();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
@@ -133,7 +128,14 @@ export function CallOverlay() {
   useEffect(() => {
     const a = audioRef.current as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
     if (!a?.setSinkId) return;
-    a.setSinkId("default").catch(() => {});
+    // Best-effort hardware routing:
+    //   speaker ON  → loudspeaker ("default")
+    //   speaker OFF → earpiece / handset ("communications" on Chromium; falls back silently on unsupported browsers)
+    const sinkId = speaker ? "default" : "communications";
+    a.setSinkId(sinkId).catch(() => {
+      // Fallback: some mobile browsers only expose "default"
+      if (sinkId !== "default") a.setSinkId("default").catch(() => {});
+    });
   }, [speaker]);
 
   const finalizeRecording = () => {
