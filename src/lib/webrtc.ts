@@ -86,8 +86,10 @@ export interface RtcSession {
   /** Latest known status — replayed to newly-attached onStatus subscribers. */
   currentStatus: CallStatus;
   hangup: () => Promise<void>;
-  onRemoteTrack: (cb: (stream: MediaStream) => void) => void;
-  onStatus: (cb: (s: CallStatus) => void) => void;
+  /** Register a remote-track listener. Returns an unsubscribe function. */
+  onRemoteTrack: (cb: (stream: MediaStream) => void) => () => void;
+  /** Register a status listener. Returns an unsubscribe function. */
+  onStatus: (cb: (s: CallStatus) => void) => () => void;
   restartIce: () => Promise<void>;
   getDiagnostics: () => Promise<CallDiagnostics>;
 }
@@ -133,7 +135,13 @@ async function getMic(): Promise<MediaStream> {
   }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: {
+        echoCancellation: { ideal: true },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: true },
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 48000 },
+      } as MediaTrackConstraints,
       video: false,
     });
     const tracks = stream.getAudioTracks();
@@ -152,6 +160,18 @@ async function getMic(): Promise<MediaStream> {
     if (err.name === "NotReadableError") throw new Error("Microphone is in use by another app.");
     throw new Error(err.message || "Could not access microphone.");
   }
+}
+
+/** Add local tracks at most once per kind. On renegotiation, replace the existing sender's track instead of creating a second sender. Prevents duplicate outbound m-lines that manifest as echo/duplicated voice. */
+function addLocalTracksOnce(pc: RTCPeerConnection, stream: MediaStream) {
+  stream.getTracks().forEach((track) => {
+    const existing = pc.getSenders().find((s) => s.track?.kind === track.kind);
+    if (existing) {
+      existing.replaceTrack(track).catch(() => {});
+      return;
+    }
+    pc.addTrack(track, stream);
+  });
 }
 
 function assertAudioSdp(desc: RTCSessionDescriptionInit, label: string) {
