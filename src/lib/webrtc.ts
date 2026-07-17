@@ -447,7 +447,7 @@ export async function acceptIncomingCall(callId: string): Promise<RtcSession> {
   const iceServers = buildIceServers();
   const pc = new RTCPeerConnection({ iceServers });
   const localStream = await localStreamPromise;
-  localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+  addLocalTracksOnce(pc, localStream);
   const remoteStream = new MediaStream();
 
   const remoteCbs = new Set<(s: MediaStream) => void>();
@@ -463,10 +463,12 @@ export async function acceptIncomingCall(callId: string): Promise<RtcSession> {
     onRemoteTrack: (cb) => {
       remoteCbs.add(cb);
       if (remoteStream.getTracks().length) cb(remoteStream);
+      return () => { remoteCbs.delete(cb); };
     },
     onStatus: (cb) => {
       statusCbs.add(cb);
       cb(session.currentStatus);
+      return () => { statusCbs.delete(cb); };
     },
     restartIce: async () => { /* only caller restarts */ },
     getDiagnostics: () => getDiagnosticsFor(session),
